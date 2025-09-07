@@ -50,9 +50,87 @@ class SalonController {
         throw new AppError('Failed to create salon', 500, 'SALON_CREATION_FAILED');
       }
 
+      // Automatically create Stripe Connect account for the salon
+      let stripeAccountData = null;
+      let onboardingUrl = null;
+      
+      try {
+        // Get user profile for Stripe account creation
+        const { data: userProfile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', req.user.id)
+          .single();
+
+        // Create Stripe Connect account
+        const stripeAccount = await stripeService.createConnectAccount({
+          business_name: salon.business_name,
+          salon_id: salon.id,
+          owner_id: req.user.id,
+          email: email || userProfile?.email,
+          country: address?.country || 'US',
+          business_type: req.body.business_type || 'individual'
+        });
+
+        // Update salon with Stripe account ID
+        await supabase
+          .from('salons')
+          .update({
+            stripe_account_id: stripeAccount.id,
+            stripe_account_status: 'pending'
+          })
+          .eq('id', salon.id);
+
+        // Create Stripe account record in database
+        await supabase
+          .from('stripe_accounts')
+          .insert([{
+            salon_id: salon.id,
+            stripe_account_id: stripeAccount.id,
+            account_status: 'pending',
+            onboarding_completed: false
+          }]);
+
+        // Generate onboarding link for immediate setup
+        const returnUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/salon/dashboard?stripe_setup=success`;
+        const refreshUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/salon/dashboard?stripe_setup=refresh`;
+        
+        const accountLink = await stripeService.createAccountLink(
+          stripeAccount.id,
+          returnUrl,
+          refreshUrl
+        );
+
+        stripeAccountData = {
+          stripe_account_id: stripeAccount.id,
+          account_status: 'pending',
+          onboarding_completed: false
+        };
+
+        onboardingUrl = accountLink.url;
+
+      } catch (stripeError) {
+        console.error('Stripe account creation failed during salon setup:', stripeError);
+        // Don't fail salon creation if Stripe setup fails - salon owner can set it up later
+      }
+
       res.status(201).json({
         success: true,
-        data: { salon }
+        data: { 
+          salon: {
+            ...salon,
+            stripe_account_id: stripeAccountData?.stripe_account_id || null,
+            stripe_account_status: stripeAccountData?.account_status || null
+          },
+          stripe_setup: {
+            required: true,
+            account_created: !!stripeAccountData,
+            onboarding_url: onboardingUrl,
+            message: stripeAccountData 
+              ? 'Stripe account created. Complete onboarding to receive payments.'
+              : 'Salon created successfully. Set up Stripe account to receive payments.'
+          }
+        }
       });
 
     } catch (error) {

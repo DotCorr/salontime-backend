@@ -68,6 +68,65 @@ GET /api/auth/check
 Authorization: Bearer <token>
 ```
 
+### Onboarding (`/api/onboarding`)
+
+#### Complete Salon Owner Onboarding (Protected)
+```
+POST /api/onboarding/salon-owner
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "full_name": "John Doe",
+  "phone": "+1234567890",
+  "business_name": "John's Hair Salon",
+  "business_type": "individual",
+  "business_description": "Professional hair styling services",
+  "business_email": "contact@johnssalon.com",
+  "business_phone": "+1234567890",
+  "street_address": "123 Main St",
+  "city": "New York",
+  "state": "NY",
+  "zip_code": "10001",
+  "country": "US",
+  "business_hours": {
+    "monday": { "open": "09:00", "close": "18:00" },
+    "tuesday": { "open": "09:00", "close": "18:00" },
+    ...
+  },
+  "services_offered": [
+    {
+      "name": "Haircut",
+      "description": "Professional haircut",
+      "price": 50,
+      "duration": 60,
+      "category": "Hair"
+    }
+  ],
+  "amenities": ["wifi", "parking"],
+  "website": "https://johnssalon.com",
+  "bank_country": "US",
+  "currency": "usd"
+}
+```
+
+#### Get Onboarding Status (Protected)
+```
+GET /api/onboarding/status
+Authorization: Bearer <token>
+```
+
+#### Complete Stripe Onboarding (Protected)
+```
+POST /api/onboarding/stripe/complete
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "account_id": "acct_stripe_account_id"
+}
+```
+
 ### Salons (`/api/salons`)
 
 #### Search Salons (Public)

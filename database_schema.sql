@@ -116,18 +116,42 @@ CREATE TABLE IF NOT EXISTS public.family_members (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create stripe_accounts table
-CREATE TABLE IF NOT EXISTS public.stripe_accounts (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    salon_id UUID REFERENCES public.salons(id) ON DELETE CASCADE,
-    stripe_account_id VARCHAR(100) UNIQUE NOT NULL,
-    account_status VARCHAR(50) DEFAULT 'pending',
-    onboarding_completed BOOLEAN DEFAULT false,
-    capabilities JSONB,
-    requirements JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- Create stripe_accounts table for managing Stripe Connect accounts
+CREATE TABLE stripe_accounts (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  salon_id UUID REFERENCES salons(id) ON DELETE CASCADE,
+  stripe_account_id TEXT UNIQUE NOT NULL,
+  account_status TEXT DEFAULT 'pending' CHECK (account_status IN ('pending', 'active', 'inactive', 'restricted')),
+  onboarding_completed BOOLEAN DEFAULT false,
+  charges_enabled BOOLEAN DEFAULT false,
+  payouts_enabled BOOLEAN DEFAULT false,
+  country TEXT DEFAULT 'US',
+  currency TEXT DEFAULT 'usd',
+  business_type TEXT DEFAULT 'individual',
+  capabilities JSONB DEFAULT '{}',
+  requirements JSONB DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Create index for faster lookups
+CREATE INDEX idx_stripe_accounts_salon_id ON stripe_accounts(salon_id);
+CREATE INDEX idx_stripe_accounts_stripe_id ON stripe_accounts(stripe_account_id);
+
+-- Add RLS policies for stripe_accounts
+ALTER TABLE stripe_accounts ENABLE ROW LEVEL SECURITY;
+
+-- Salon owners can view and update their own Stripe accounts
+CREATE POLICY "Salon owners can manage their Stripe accounts" ON stripe_accounts
+  FOR ALL USING (
+    salon_id IN (
+      SELECT id FROM salons WHERE owner_id = auth.uid()
+    )
+  );
+
+-- Platform can view all accounts (for webhooks and admin)
+CREATE POLICY "Service role can manage all stripe accounts" ON stripe_accounts
+  FOR ALL USING (auth.role() = 'service_role');
 
 -- Create notification_preferences table
 CREATE TABLE IF NOT EXISTS public.notification_preferences (

@@ -38,11 +38,29 @@ class PaymentController {
         .from('stripe_accounts')
         .select('*')
         .eq('salon_id', booking.salon_id)
-        .eq('status', 'active')
+        .eq('account_status', 'active')
         .single();
 
       if (stripeError || !stripeAccount) {
         throw new AppError('Salon payment not set up', 400, 'SALON_PAYMENT_NOT_SETUP');
+      }
+
+      // Ensure customer has Stripe customer ID
+      let customerId = req.user.stripe_customer_id;
+      if (!customerId) {
+        const { data: userProfile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', req.user.id)
+          .single();
+
+        const customer = await stripeService.createOrGetCustomer({
+          user_id: req.user.id,
+          email: userProfile.email,
+          full_name: userProfile.full_name
+        });
+
+        customerId = customer.id;
       }
 
       // Calculate application fee (platform commission)
@@ -53,7 +71,7 @@ class PaymentController {
       const paymentIntentData = await stripeService.createPaymentIntent({
         amount: amountInCents,
         currency: 'usd',
-        customer_id: req.user.stripe_customer_id,
+        customer_id: customerId,
         payment_method_id,
         connected_account_id: stripeAccount.stripe_account_id,
         application_fee_amount: applicationFeeAmount,
@@ -85,7 +103,7 @@ class PaymentController {
       if (save_payment_method && payment_method_id) {
         await stripeService.attachPaymentMethod(
           payment_method_id,
-          req.user.stripe_customer_id
+          customerId
         );
       }
 

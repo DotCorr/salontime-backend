@@ -118,18 +118,40 @@ class StripeService {
     }
   }
 
-  // Create customer
-  async createCustomer(customerData) {
+  // Create or get customer
+  async createOrGetCustomer(userData) {
     this._checkStripeEnabled();
 
     try {
+      // Check if customer already exists
+      if (userData.stripe_customer_id) {
+        try {
+          const customer = await this.stripe.customers.retrieve(userData.stripe_customer_id);
+          return customer;
+        } catch (error) {
+          // Customer not found, create new one
+          console.log('Existing customer not found, creating new one');
+        }
+      }
+
+      // Create new customer
       const customer = await this.stripe.customers.create({
-        email: customerData.email,
-        name: customerData.name,
+        email: userData.email,
+        name: userData.full_name || userData.name,
         metadata: {
-          user_id: customerData.user_id
+          user_id: userData.user_id || userData.id,
+          created_from: 'salontime_app'
         }
       });
+
+      // Update user profile with Stripe customer ID
+      if (userData.user_id || userData.id) {
+        const { supabase } = require('../config/database');
+        await supabase
+          .from('user_profiles')
+          .update({ stripe_customer_id: customer.id })
+          .eq('id', userData.user_id || userData.id);
+      }
 
       return customer;
     } catch (error) {
