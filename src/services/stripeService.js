@@ -93,7 +93,7 @@ class StripeService {
         confirmation_method: 'manual',
         confirm: true,
         return_url: process.env.FRONTEND_URL || 'http://localhost:3000',
-        application_fee_amount: paymentData.application_fee_amount,
+        // NO APPLICATION FEE - salon owners pay via subscription only
         transfer_data: {
           destination: paymentData.connected_account_id,
         },

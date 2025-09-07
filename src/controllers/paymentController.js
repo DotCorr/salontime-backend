@@ -1,5 +1,23 @@
 const { supabase } = require('../config/database');
-const stripeService = require('../services/stripeService');
+const stripeS      // Calculate application fee (platform commission)
+      // NO COMMISSION - salon owners pay via subscription only
+      const applicationFeeAmount = 0; // Platform revenue comes from subscriptions
+      const amountInCents = Math.round(booking.total_amount * 100);
+
+      // Create payment intent
+      const paymentIntentData = await stripeService.createPaymentIntent({
+        amount: amountInCents,
+        currency: 'usd',
+        customer_id: req.user.stripe_customer_id,
+        payment_method_id,
+        connected_account_id: stripeAccount.stripe_account_id,
+        // NO APPLICATION FEE - 100% goes to salon owner
+        metadata: {
+          booking_id: booking.id,
+          salon_id: booking.salon_id,
+          service_id: booking.service_id
+        }
+      });../services/stripeService');
 const emailService = require('../services/emailService');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 
@@ -64,7 +82,8 @@ class PaymentController {
       }
 
       // Calculate application fee (platform commission)
-      const applicationFeeAmount = Math.round(booking.total_amount * 0.05 * 100); // 5% platform fee
+      // NO COMMISSION - salon owners pay via subscription only
+      const applicationFeeAmount = 0; // Platform revenue comes from subscriptions
       const amountInCents = Math.round(booking.total_amount * 100);
 
       // Create payment intent
@@ -74,7 +93,7 @@ class PaymentController {
         customer_id: customerId,
         payment_method_id,
         connected_account_id: stripeAccount.stripe_account_id,
-        application_fee_amount: applicationFeeAmount,
+        // NO APPLICATION FEE - 100% goes to salon owner
         metadata: {
           booking_id: booking.id,
           salon_id: booking.salon_id,
@@ -88,7 +107,7 @@ class PaymentController {
         .insert([{
           booking_id: booking.id,
           amount: booking.total_amount,
-          platform_fee: applicationFeeAmount / 100,
+          platform_fee: 0, // No platform fee - revenue from subscriptions only
           stripe_payment_intent_id: paymentIntentData.id,
           status: 'pending'
         }])
@@ -113,7 +132,7 @@ class PaymentController {
           client_secret: paymentIntentData.client_secret,
           payment_id: payment.id,
           amount: booking.total_amount,
-          application_fee: applicationFeeAmount / 100
+          platform_fee: 0 // No commission - subscription-based revenue model
         }
       });
 
@@ -405,12 +424,11 @@ class PaymentController {
         dateFilter = `processed_at.gte.${daysAgo.toISOString()}`;
       }
 
-      // Get revenue data
+      // Get revenue data (subscription-based model)
       const { data: payments, error: paymentsError } = await supabase
         .from('payments')
         .select(`
           amount,
-          platform_fee,
           processed_at,
           bookings!inner(salon_id, services(*))
         `)
@@ -422,10 +440,10 @@ class PaymentController {
         throw new AppError('Failed to fetch revenue data', 500, 'REVENUE_DATA_FETCH_FAILED');
       }
 
-      // Calculate analytics
+      // Calculate analytics (subscription-based model - no commissions)
       const totalRevenue = payments.reduce((sum, payment) => sum + payment.amount, 0);
-      const totalFees = payments.reduce((sum, payment) => sum + payment.platform_fee, 0);
-      const netRevenue = totalRevenue - totalFees;
+      const totalFees = 0; // No platform fees - revenue from subscriptions only
+      const netRevenue = totalRevenue; // 100% goes to salon owner
       const totalBookings = payments.length;
 
       // Group by service
@@ -435,7 +453,7 @@ class PaymentController {
           acc[serviceName] = { count: 0, revenue: 0 };
         }
         acc[serviceName].count += 1;
-        acc[serviceName].revenue += payment.amount - payment.platform_fee;
+        acc[serviceName].revenue += payment.amount; // Full amount to salon
         return acc;
       }, {});
 
@@ -445,7 +463,7 @@ class PaymentController {
         if (!acc[date]) {
           acc[date] = 0;
         }
-        acc[date] += payment.amount - payment.platform_fee;
+        acc[date] += payment.amount; // Full amount to salon
         return acc;
       }, {});
 
@@ -454,14 +472,15 @@ class PaymentController {
         data: {
           summary: {
             total_revenue: totalRevenue,
-            platform_fees: totalFees,
-            net_revenue: netRevenue,
+            platform_fees: 0, // No platform fees - subscription model
+            net_revenue: netRevenue, // 100% to salon owner
             total_bookings: totalBookings,
             average_booking_value: totalBookings > 0 ? totalRevenue / totalBookings : 0
           },
           service_breakdown: serviceBreakdown,
           daily_revenue: dailyRevenue,
-          period: { start_date, end_date, days: period }
+          period: { start_date, end_date, days: period },
+          revenue_model: "subscription_only" // No commission model
         }
       });
 
