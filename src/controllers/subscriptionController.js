@@ -1,6 +1,7 @@
 const { supabase } = require('../config/database');
 const stripeService = require('../services/stripeService');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
+const config = require('../config');
 
 class SubscriptionController {
   // Create premium subscription for salon owner
@@ -52,9 +53,9 @@ class SubscriptionController {
         });
       }
 
-      // Create subscription with 7-day trial
-      const priceId = process.env.STRIPE_PLUS_PLAN_PRICE_ID || 'price_plus_plan'; // Set this in your env
-      const subscription = await stripeService.createSubscription(customerId, priceId, 7);
+      // Create subscription with configurable trial period
+      const priceId = config.stripe.plus_plan_price_id;
+      const subscription = await stripeService.createSubscription(customerId, priceId, config.subscription.trial_days);
 
       // Update salon record
       const { data: updatedSalon, error: updateError } = await supabase
@@ -218,7 +219,7 @@ class SubscriptionController {
         throw new AppError('No customer record found', 404, 'NO_CUSTOMER');
       }
 
-      const returnUrl = `${process.env.FRONTEND_URL}/dashboard/subscription`;
+      const returnUrl = `${config.frontend.url}/dashboard/subscription`;
       const session = await stripeService.createBillingPortalSession(
         salon.stripe_customer_id,
         returnUrl

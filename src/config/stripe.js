@@ -1,17 +1,9 @@
 const Stripe = require('stripe');
-
-// Validate required environment variables
-const requiredStripeVars = ['STRIPE_SECRET_KEY'];
-const missingVars = requiredStripeVars.filter(varName => !process.env[varName]);
-
-if (missingVars.length > 0) {
-  console.warn(`⚠️  Missing Stripe environment variables: ${missingVars.join(', ')}`);
-  console.warn('Stripe functionality will be disabled until these are provided.');
-}
+const config = require('./index');
 
 // Initialize Stripe (will be null if no secret key)
-const stripe = process.env.STRIPE_SECRET_KEY 
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
+const stripe = config.stripe.secret_key 
+  ? new Stripe(config.stripe.secret_key, {
       apiVersion: '2023-10-16',
     })
   : null;

@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
+const config = require('./config');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -17,6 +18,9 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const onboardingRoutes = require('./routes/onboardingRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 
+// Validate configuration
+config.validate();
+
 const app = express();
 
 // Trust proxy for Heroku/AWS deployments
@@ -29,12 +33,7 @@ app.use(helmet({
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.FRONTEND_URLS?.split(',') || [
-    'http://localhost:3000',
-    'http://localhost:8080',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:8080'
-  ],
+  origin: config.cors.allowed_origins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -42,8 +41,8 @@ app.use(cors({
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // limit each IP
+  windowMs: config.rateLimit.window_ms,
+  max: config.isDevelopment() ? config.rateLimit.dev_max_requests : config.rateLimit.prod_max_requests,
   message: {
     success: false,
     error: 'Too many requests from this IP, please try again later',
@@ -57,8 +56,8 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 // Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: config.request.size_limit }));
+app.use(express.urlencoded({ extended: true, limit: config.request.url_limit }));
 
 // Compression middleware
 app.use(compression());
@@ -70,10 +69,10 @@ app.use(logger);
 app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
-    message: 'SalonTime API is running',
+    message: `${config.business.name} API is running`,
     timestamp: new Date().toISOString(),
-    version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
+    version: config.server.api_version,
+    environment: config.server.node_env
   });
 });
 

@@ -1,23 +1,15 @@
 const nodemailer = require('nodemailer');
+const config = require('./index');
 
-// Validate required environment variables
-const requiredEmailVars = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'FROM_EMAIL'];
-const missingVars = requiredEmailVars.filter(varName => !process.env[varName]);
-
-if (missingVars.length > 0) {
-  console.warn(`⚠️  Missing email environment variables: ${missingVars.join(', ')}`);
-  console.warn('Email functionality will be disabled until these are provided.');
-}
-
-// Create transporter (will be null if missing config)
-const transporter = missingVars.length === 0 
+// Create transporter using centralized config
+const transporter = config.email.smtp_user && config.email.smtp_pass
   ? nodemailer.createTransporter({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT),
-      secure: parseInt(process.env.SMTP_PORT) === 465, // true for 465, false for other ports
+      host: config.email.smtp_host,
+      port: config.email.smtp_port,
+      secure: config.email.smtp_port === 465, // true for 465, false for other ports
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: config.email.smtp_user,
+        pass: config.email.smtp_pass,
       },
     })
   : null;
@@ -43,6 +35,6 @@ testEmailConnection();
 module.exports = {
   transporter,
   isEmailEnabled: !!transporter,
-  fromEmail: process.env.FROM_EMAIL || 'noreply@salontime.app'
+  fromEmail: config.email.from_email
 };
 

@@ -1,5 +1,6 @@
 const { stripe, isStripeEnabled } = require('../config/stripe');
 const { AppError } = require('../middleware/errorHandler');
+const config = require('../config');
 
 class StripeService {
   constructor() {
@@ -468,7 +469,7 @@ class StripeService {
   // ==================== SUBSCRIPTION MANAGEMENT ====================
 
   // Create subscription for salon owner premium plan
-  async createSubscription(customerId, priceId, trialDays = 7) {
+  async createSubscription(customerId, priceId, trialDays = config.subscription.trial_days) {
     this._checkStripeEnabled();
 
     try {
