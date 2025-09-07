@@ -3,7 +3,7 @@ const config = require('./index');
 
 // Create transporter using centralized config
 const transporter = config.email.smtp_user && config.email.smtp_pass
-  ? nodemailer.createTransporter({
+  ? nodemailer.createTransport({
       host: config.email.smtp_host,
       port: config.email.smtp_port,
       secure: config.email.smtp_port === 465, // true for 465, false for other ports
