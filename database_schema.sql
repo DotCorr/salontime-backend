@@ -18,19 +18,31 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
 );
 
 -- Create salons table
-CREATE TABLE IF NOT EXISTS public.salons (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    owner_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
-    business_name VARCHAR(100) NOT NULL,
+CREATE TABLE salons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    business_name VARCHAR(255) NOT NULL,
     description TEXT,
-    address JSONB, -- {street, city, postal_code, country, coordinates}
-    phone VARCHAR(20),
-    email VARCHAR(100),
-    business_hours JSONB, -- {monday: {open: "09:00", close: "18:00"}, ...}
-    subscription_plan VARCHAR(20) DEFAULT 'basic' CHECK (subscription_plan IN ('basic', 'plus')),
-    stripe_account_id VARCHAR(100),
-    stripe_account_status VARCHAR(50) DEFAULT 'pending',
+    address VARCHAR(255) NOT NULL,
+    city VARCHAR(100) NOT NULL,
+    state VARCHAR(100) NOT NULL,
+    zip_code VARCHAR(20) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    website VARCHAR(255),
+    business_hours JSONB,
+    amenities TEXT[],
+    images TEXT[],
+    rating_average DECIMAL(3,2) DEFAULT 0.0,
+    rating_count INTEGER DEFAULT 0,
     is_active BOOLEAN DEFAULT true,
+    subscription_plan VARCHAR(20) DEFAULT 'basic' CHECK (subscription_plan IN ('basic', 'plus')),
+    subscription_status VARCHAR(20) DEFAULT 'inactive' CHECK (subscription_status IN ('inactive', 'trialing', 'active', 'past_due', 'cancelled', 'unpaid')),
+    stripe_customer_id VARCHAR(255),
+    stripe_subscription_id VARCHAR(255),
+    trial_ends_at TIMESTAMP WITH TIME ZONE,
+    subscription_ends_at TIMESTAMP WITH TIME ZONE,
+    last_payment_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

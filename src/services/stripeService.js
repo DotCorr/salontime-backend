@@ -248,6 +248,21 @@ class StripeService {
         case 'payment_intent.payment_failed':
           await this.handlePaymentFailed(event.data.object);
           break;
+        case 'customer.subscription.created':
+          await this.handleSubscriptionCreated(event.data.object);
+          break;
+        case 'customer.subscription.updated':
+          await this.handleSubscriptionUpdated(event.data.object);
+          break;
+        case 'customer.subscription.deleted':
+          await this.handleSubscriptionDeleted(event.data.object);
+          break;
+        case 'invoice.payment_succeeded':
+          await this.handleInvoicePaymentSucceeded(event.data.object);
+          break;
+        case 'invoice.payment_failed':
+          await this.handleInvoicePaymentFailed(event.data.object);
+          break;
         default:
           console.log(`Unhandled event type: ${event.type}`);
       }
@@ -324,6 +339,120 @@ class StripeService {
     }
   }
 
+  // Handle subscription created
+  async handleSubscriptionCreated(subscription) {
+    const { supabase } = require('../config/database');
+    
+    try {
+      // Update salon subscription status
+      const { error } = await supabase
+        .from('salons')
+        .update({
+          subscription_plan: 'plus',
+          subscription_status: subscription.status,
+          stripe_subscription_id: subscription.id,
+          trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+          subscription_ends_at: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null
+        })
+        .eq('stripe_customer_id', subscription.customer);
+
+      if (error) {
+        console.error('Failed to update subscription status:', error);
+      }
+    } catch (error) {
+      console.error('Error handling subscription created webhook:', error);
+    }
+  }
+
+  // Handle subscription updated
+  async handleSubscriptionUpdated(subscription) {
+    const { supabase } = require('../config/database');
+    
+    try {
+      const { error } = await supabase
+        .from('salons')
+        .update({
+          subscription_status: subscription.status,
+          subscription_ends_at: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+          trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null
+        })
+        .eq('stripe_subscription_id', subscription.id);
+
+      if (error) {
+        console.error('Failed to update subscription status:', error);
+      }
+    } catch (error) {
+      console.error('Error handling subscription updated webhook:', error);
+    }
+  }
+
+  // Handle subscription deleted/cancelled
+  async handleSubscriptionDeleted(subscription) {
+    const { supabase } = require('../config/database');
+    
+    try {
+      const { error } = await supabase
+        .from('salons')
+        .update({
+          subscription_plan: 'basic',
+          subscription_status: 'cancelled',
+          subscription_ends_at: new Date().toISOString()
+        })
+        .eq('stripe_subscription_id', subscription.id);
+
+      if (error) {
+        console.error('Failed to update subscription cancellation:', error);
+      }
+    } catch (error) {
+      console.error('Error handling subscription deleted webhook:', error);
+    }
+  }
+
+  // Handle successful invoice payment
+  async handleInvoicePaymentSucceeded(invoice) {
+    const { supabase } = require('../config/database');
+    
+    try {
+      if (invoice.subscription) {
+        const { error } = await supabase
+          .from('salons')
+          .update({
+            subscription_status: 'active',
+            last_payment_date: new Date().toISOString()
+          })
+          .eq('stripe_subscription_id', invoice.subscription);
+
+        if (error) {
+          console.error('Failed to update subscription payment:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error handling invoice payment success webhook:', error);
+    }
+  }
+
+  // Handle failed invoice payment
+  async handleInvoicePaymentFailed(invoice) {
+    const { supabase } = require('../config/database');
+    
+    try {
+      if (invoice.subscription) {
+        const { error } = await supabase
+          .from('salons')
+          .update({
+            subscription_status: 'past_due'
+          })
+          .eq('stripe_subscription_id', invoice.subscription);
+
+        if (error) {
+          console.error('Failed to update subscription payment failure:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error handling invoice payment failure webhook:', error);
+    }
+  }
+
   // Get account dashboard link
   async createDashboardLink(accountId) {
     this._checkStripeEnabled();
@@ -333,6 +462,87 @@ class StripeService {
       return link;
     } catch (error) {
       throw new AppError(`Dashboard link creation failed: ${error.message}`, 500, 'STRIPE_DASHBOARD_LINK_FAILED');
+    }
+  }
+
+  // ==================== SUBSCRIPTION MANAGEMENT ====================
+
+  // Create subscription for salon owner premium plan
+  async createSubscription(customerId, priceId, trialDays = 7) {
+    this._checkStripeEnabled();
+
+    try {
+      const subscription = await this.stripe.subscriptions.create({
+        customer: customerId,
+        items: [{ price: priceId }],
+        trial_period_days: trialDays,
+        payment_behavior: 'default_incomplete',
+        payment_settings: { save_default_payment_method: 'on_subscription' },
+        expand: ['latest_invoice.payment_intent'],
+      });
+
+      return subscription;
+    } catch (error) {
+      throw new AppError(`Subscription creation failed: ${error.message}`, 500, 'STRIPE_SUBSCRIPTION_FAILED');
+    }
+  }
+
+  // Cancel subscription
+  async cancelSubscription(subscriptionId, cancelAtPeriodEnd = true) {
+    this._checkStripeEnabled();
+
+    try {
+      const subscription = await this.stripe.subscriptions.update(subscriptionId, {
+        cancel_at_period_end: cancelAtPeriodEnd,
+      });
+
+      if (!cancelAtPeriodEnd) {
+        await this.stripe.subscriptions.cancel(subscriptionId);
+      }
+
+      return subscription;
+    } catch (error) {
+      throw new AppError(`Subscription cancellation failed: ${error.message}`, 500, 'STRIPE_SUBSCRIPTION_CANCEL_FAILED');
+    }
+  }
+
+  // Get subscription status
+  async getSubscription(subscriptionId) {
+    this._checkStripeEnabled();
+
+    try {
+      const subscription = await this.stripe.subscriptions.retrieve(subscriptionId);
+      return subscription;
+    } catch (error) {
+      throw new AppError(`Subscription retrieval failed: ${error.message}`, 500, 'STRIPE_SUBSCRIPTION_RETRIEVAL_FAILED');
+    }
+  }
+
+  // Update subscription
+  async updateSubscription(subscriptionId, updates) {
+    this._checkStripeEnabled();
+
+    try {
+      const subscription = await this.stripe.subscriptions.update(subscriptionId, updates);
+      return subscription;
+    } catch (error) {
+      throw new AppError(`Subscription update failed: ${error.message}`, 500, 'STRIPE_SUBSCRIPTION_UPDATE_FAILED');
+    }
+  }
+
+  // Create billing portal session
+  async createBillingPortalSession(customerId, returnUrl) {
+    this._checkStripeEnabled();
+
+    try {
+      const session = await this.stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: returnUrl,
+      });
+
+      return session;
+    } catch (error) {
+      throw new AppError(`Billing portal creation failed: ${error.message}`, 500, 'STRIPE_BILLING_PORTAL_FAILED');
     }
   }
 }
