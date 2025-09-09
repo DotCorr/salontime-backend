@@ -546,6 +546,17 @@ class StripeService {
       throw new AppError(`Billing portal creation failed: ${error.message}`, 500, 'STRIPE_BILLING_PORTAL_FAILED');
     }
   }
+
+  // Construct webhook event for verification (used by payment controller)
+  constructWebhookEvent(payload, signature, endpointSecret) {
+    this._checkStripeEnabled();
+
+    try {
+      return this.stripe.webhooks.constructEvent(payload, signature, endpointSecret);
+    } catch (error) {
+      throw new AppError(`Webhook signature verification failed: ${error.message}`, 400, 'WEBHOOK_VERIFICATION_FAILED');
+    }
+  }
 }
 
 module.exports = new StripeService();

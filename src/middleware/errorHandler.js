@@ -99,10 +99,17 @@ const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
 
+// 404 Not Found middleware
+const notFound = (req, res, next) => {
+  const error = new AppError(`Not Found - ${req.originalUrl}`, 404, 'NOT_FOUND');
+  next(error);
+};
+
 module.exports = {
   errorHandler,
   asyncHandler,
   AppError,
-  logger
+  logger,
+  notFound
 };
 

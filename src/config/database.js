@@ -1,3 +1,7 @@
+// Load environment variables first
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+
 const { createClient } = require('@supabase/supabase-js');
 
 // Validate required environment variables

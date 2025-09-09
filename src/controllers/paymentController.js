@@ -1,496 +1,424 @@
+const stripeService = require('../services/stripeService');
 const { supabase } = require('../config/database');
-const stripeS      // Calculate application fee (platform commission)
-      // NO COMMISSION - salon owners pay via subscription only
-      const applicationFeeAmount = 0; // Platform revenue comes from subscriptions
-      const amountInCents = Math.round(booking.total_amount * 100);
-
-      // Create payment intent
-      const paymentIntentData = await stripeService.createPaymentIntent({
-        amount: amountInCents,
-        currency: 'usd',
-        customer_id: req.user.stripe_customer_id,
-        payment_method_id,
-        connected_account_id: stripeAccount.stripe_account_id,
-        // NO APPLICATION FEE - 100% goes to salon owner
-        metadata: {
-          booking_id: booking.id,
-          salon_id: booking.salon_id,
-          service_id: booking.service_id
-        }
-      });../services/stripeService');
-const emailService = require('../services/emailService');
-const { asyncHandler, AppError } = require('../middleware/errorHandler');
+const config = require('../config');
 
 class PaymentController {
-  // Create payment intent for booking
-  createPaymentIntent = asyncHandler(async (req, res) => {
-    const { booking_id, payment_method_id, save_payment_method = false } = req.body;
-
-    if (!booking_id) {
-      throw new AppError('Booking ID is required', 400, 'BOOKING_ID_REQUIRED');
-    }
-
+  // Handle Stripe webhooks (no auth required - uses webhook signature verification)
+  async handleWebhook(req, res) {
     try {
-      // Get booking details
-      const { data: booking, error: bookingError } = await supabase
-        .from('bookings')
-        .select(`
-          *,
-          services(*),
-          salons(*, user_profiles(*))
-        `)
-        .eq('id', booking_id)
-        .eq('client_id', req.user.id)
-        .single();
-
-      if (bookingError || !booking) {
-        throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
+      const sig = req.headers['stripe-signature'];
+      const endpointSecret = config.stripe.webhook_secret;
+      
+      if (!endpointSecret) {
+        console.error('Webhook secret not configured');
+        return res.status(400).send('Webhook secret not configured');
       }
 
-      if (booking.status !== 'pending') {
-        throw new AppError('Booking is not in pending status', 400, 'INVALID_BOOKING_STATUS');
+      // Verify webhook signature
+      const event = stripeService.constructWebhookEvent(req.body, sig, endpointSecret);
+      
+      console.log('Received webhook event:', event.type);
+
+      switch (event.type) {
+        case 'payment_intent.succeeded':
+          await this.handlePaymentSuccess(event.data.object);
+          break;
+        case 'payment_intent.payment_failed':
+          await this.handlePaymentFailure(event.data.object);
+          break;
+        case 'customer.subscription.created':
+        case 'customer.subscription.updated':
+        case 'customer.subscription.deleted':
+          await this.handleSubscriptionChange(event.data.object);
+          break;
+        default:
+          console.log(`Unhandled event type: ${event.type}`);
+      }
+
+      res.json({ received: true });
+    } catch (error) {
+      console.error('Webhook error:', error);
+      res.status(400).send(`Webhook Error: ${error.message}`);
+    }
+  }
+
+  // Create payment intent for service booking
+  async createPaymentIntent(req, res) {
+    try {
+      const { amount, currency = 'usd', serviceId, salonId } = req.body;
+      const userId = req.user.id;
+
+      if (!amount || !serviceId || !salonId) {
+        return res.status(400).json({ 
+          error: 'Missing required fields: amount, serviceId, salonId' 
+        });
       }
 
       // Get salon's Stripe account
-      const { data: stripeAccount, error: stripeError } = await supabase
-        .from('stripe_accounts')
-        .select('*')
-        .eq('salon_id', booking.salon_id)
-        .eq('account_status', 'active')
+      const { data: salon } = await supabase
+        .from('salons')
+        .select('stripe_account_id, name')
+        .eq('id', salonId)
         .single();
 
-      if (stripeError || !stripeAccount) {
-        throw new AppError('Salon payment not set up', 400, 'SALON_PAYMENT_NOT_SETUP');
-      }
-
-      // Ensure customer has Stripe customer ID
-      let customerId = req.user.stripe_customer_id;
-      if (!customerId) {
-        const { data: userProfile } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', req.user.id)
-          .single();
-
-        const customer = await stripeService.createOrGetCustomer({
-          user_id: req.user.id,
-          email: userProfile.email,
-          full_name: userProfile.full_name
+      if (!salon || !salon.stripe_account_id) {
+        return res.status(404).json({ 
+          error: 'Salon not found or Stripe not configured' 
         });
-
-        customerId = customer.id;
       }
 
-      // Calculate application fee (platform commission)
-      // NO COMMISSION - salon owners pay via subscription only
-      const applicationFeeAmount = 0; // Platform revenue comes from subscriptions
-      const amountInCents = Math.round(booking.total_amount * 100);
-
-      // Create payment intent
-      const paymentIntentData = await stripeService.createPaymentIntent({
-        amount: amountInCents,
-        currency: 'usd',
-        customer_id: customerId,
-        payment_method_id,
-        connected_account_id: stripeAccount.stripe_account_id,
-        // NO APPLICATION FEE - 100% goes to salon owner
+      // Create payment intent - NO APPLICATION FEE (commission removed)
+      const paymentIntent = await stripeService.createPaymentIntent({
+        amount: Math.round(amount * 100), // Convert to cents
+        currency,
+        transfer_data: {
+          destination: salon.stripe_account_id,
+        },
         metadata: {
-          booking_id: booking.id,
-          salon_id: booking.salon_id,
-          service_id: booking.service_id
+          userId,
+          serviceId,
+          salonId,
+          salonName: salon.name
         }
       });
 
-      // Save payment record
-      const { data: payment, error: paymentError } = await supabase
+      // Store payment record
+      const { error: dbError } = await supabase
         .from('payments')
-        .insert([{
-          booking_id: booking.id,
-          amount: booking.total_amount,
-          platform_fee: 0, // No platform fee - revenue from subscriptions only
-          stripe_payment_intent_id: paymentIntentData.id,
+        .insert({
+          user_id: userId,
+          salon_id: salonId,
+          service_id: serviceId,
+          stripe_payment_intent_id: paymentIntent.id,
+          amount: amount,
+          currency,
           status: 'pending'
-        }])
-        .select()
-        .single();
+        });
 
-      if (paymentError) {
-        throw new AppError('Failed to save payment record', 500, 'PAYMENT_RECORD_FAILED');
+      if (dbError) {
+        console.error('Failed to store payment record:', dbError);
       }
 
-      // Save payment method if requested
-      if (save_payment_method && payment_method_id) {
-        await stripeService.attachPaymentMethod(
-          payment_method_id,
-          customerId
-        );
-      }
-
-      res.status(200).json({
-        success: true,
-        data: {
-          client_secret: paymentIntentData.client_secret,
-          payment_id: payment.id,
-          amount: booking.total_amount,
-          platform_fee: 0 // No commission - subscription-based revenue model
-        }
+      res.json({
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id
       });
-
     } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
-      }
-      throw new AppError('Failed to create payment intent', 500, 'PAYMENT_INTENT_FAILED');
+      console.error('Payment intent creation error:', error);
+      res.status(500).json({ error: 'Failed to create payment intent' });
     }
-  });
+  }
 
-  // Confirm payment and update booking
-  confirmPayment = asyncHandler(async (req, res) => {
-    const { payment_id, stripe_payment_intent_id } = req.body;
-
-    if (!payment_id || !stripe_payment_intent_id) {
-      throw new AppError('Payment ID and Stripe Payment Intent ID are required', 400, 'MISSING_PAYMENT_INFO');
-    }
-
+  // Confirm payment completion
+  async confirmPayment(req, res) {
     try {
-      // Get payment record
-      const { data: payment, error: paymentError } = await supabase
+      const { paymentIntentId } = req.params;
+      const userId = req.user.id;
+
+      // Retrieve payment intent from Stripe
+      const paymentIntent = await stripeService.retrievePaymentIntent(paymentIntentId);
+
+      if (!paymentIntent) {
+        return res.status(404).json({ error: 'Payment intent not found' });
+      }
+
+      // Update payment status in database
+      const { error } = await supabase
         .from('payments')
-        .select(`
-          *,
-          bookings(*, services(*), salons(*), user_profiles!client_id(*))
-        `)
-        .eq('id', payment_id)
-        .single();
+        .update({ 
+          status: paymentIntent.status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('stripe_payment_intent_id', paymentIntentId)
+        .eq('user_id', userId);
 
-      if (paymentError || !payment) {
-        throw new AppError('Payment not found', 404, 'PAYMENT_NOT_FOUND');
+      if (error) {
+        console.error('Failed to update payment status:', error);
       }
 
-      // Verify payment with Stripe
-      const paymentIntent = await stripeService.retrievePaymentIntent(stripe_payment_intent_id);
-
-      if (paymentIntent.status === 'succeeded') {
-        // Update payment status
-        await supabase
-          .from('payments')
-          .update({
-            status: 'completed',
-            stripe_charge_id: paymentIntent.latest_charge,
-            processed_at: new Date().toISOString()
-          })
-          .eq('id', payment_id);
-
-        // Update booking status to confirmed
-        const { data: updatedBooking, error: bookingUpdateError } = await supabase
-          .from('bookings')
-          .update({ status: 'confirmed' })
-          .eq('id', payment.booking_id)
-          .select(`
-            *,
-            services(*),
-            salons(*)
-          `)
-          .single();
-
-        if (bookingUpdateError) {
-          throw new AppError('Failed to update booking status', 500, 'BOOKING_UPDATE_FAILED');
+      res.json({
+        status: paymentIntent.status,
+        paymentIntent: {
+          id: paymentIntent.id,
+          amount: paymentIntent.amount,
+          currency: paymentIntent.currency,
+          status: paymentIntent.status
         }
-
-        // Send payment confirmation email
-        emailService.sendPaymentReceipt(
-          { ...updatedBooking, service_name: payment.bookings.services.name },
-          payment.bookings.user_profiles,
-          payment.bookings.salons,
-          {
-            amount: payment.amount,
-            payment_method: paymentIntent.payment_method?.type || 'card',
-            transaction_id: paymentIntent.latest_charge
-          }
-        );
-
-        res.status(200).json({
-          success: true,
-          data: {
-            payment,
-            booking: updatedBooking,
-            message: 'Payment confirmed successfully'
-          }
-        });
-
-      } else {
-        // Update payment status to failed
-        await supabase
-          .from('payments')
-          .update({
-            status: 'failed',
-            failure_reason: paymentIntent.last_payment_error?.message || 'Payment failed'
-          })
-          .eq('id', payment_id);
-
-        throw new AppError('Payment was not successful', 400, 'PAYMENT_FAILED');
-      }
-
-    } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
-      }
-      throw new AppError('Failed to confirm payment', 500, 'PAYMENT_CONFIRMATION_FAILED');
-    }
-  });
-
-  // Get user's payment methods
-  getPaymentMethods = asyncHandler(async (req, res) => {
-    try {
-      if (!req.user.stripe_customer_id) {
-        return res.status(200).json({
-          success: true,
-          data: { payment_methods: [] }
-        });
-      }
-
-      const paymentMethods = await stripeService.getCustomerPaymentMethods(
-        req.user.stripe_customer_id
-      );
-
-      res.status(200).json({
-        success: true,
-        data: { payment_methods: paymentMethods }
       });
-
     } catch (error) {
-      throw new AppError('Failed to fetch payment methods', 500, 'PAYMENT_METHODS_FETCH_FAILED');
+      console.error('Payment confirmation error:', error);
+      res.status(500).json({ error: 'Failed to confirm payment' });
     }
-  });
+  }
 
-  // Delete payment method
-  deletePaymentMethod = asyncHandler(async (req, res) => {
-    const { payment_method_id } = req.params;
-
+  // Get user's payment history
+  async getPaymentHistory(req, res) {
     try {
-      await stripeService.detachPaymentMethod(payment_method_id);
+      const userId = req.user.id;
+      const { page = 1, limit = 20 } = req.query;
+      const offset = (page - 1) * limit;
 
-      res.status(200).json({
-        success: true,
-        message: 'Payment method deleted successfully'
-      });
-
-    } catch (error) {
-      throw new AppError('Failed to delete payment method', 500, 'PAYMENT_METHOD_DELETE_FAILED');
-    }
-  });
-
-  // Get payment history
-  getPaymentHistory = asyncHandler(async (req, res) => {
-    const { page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
-
-    try {
       const { data: payments, error } = await supabase
         .from('payments')
         .select(`
           *,
-          bookings(
-            *,
-            services(*),
-            salons(*)
-          )
+          salons(name, address),
+          services(name, duration)
         `)
-        .eq('bookings.client_id', req.user.id)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
       if (error) {
-        throw new AppError('Failed to fetch payment history', 500, 'PAYMENT_HISTORY_FETCH_FAILED');
-      }
-
-      res.status(200).json({
-        success: true,
-        data: {
-          payments,
-          pagination: {
-            page: parseInt(page),
-            limit: parseInt(limit)
-          }
-        }
-      });
-
-    } catch (error) {
-      if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to fetch payment history', 500, 'PAYMENT_HISTORY_FETCH_FAILED');
+
+      res.json({
+        payments: payments || [],
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          hasMore: payments?.length === parseInt(limit)
+        }
+      });
+    } catch (error) {
+      console.error('Payment history error:', error);
+      res.status(500).json({ error: 'Failed to retrieve payment history' });
     }
-  });
+  }
 
-  // Process refund (salon owner only)
-  processRefund = asyncHandler(async (req, res) => {
-    const { payment_id, amount, reason } = req.body;
-
-    if (!payment_id) {
-      throw new AppError('Payment ID is required', 400, 'PAYMENT_ID_REQUIRED');
-    }
-
+  // Get salon's payment data (salon owner only)
+  async getSalonPayments(req, res) {
     try {
-      // Get payment and verify salon ownership
-      const { data: payment, error: paymentError } = await supabase
+      const userId = req.user.id;
+      const { page = 1, limit = 20 } = req.query;
+      const offset = (page - 1) * limit;
+
+      // Verify user owns a salon
+      const { data: salon } = await supabase
+        .from('salons')
+        .select('id')
+        .eq('owner_id', userId)
+        .single();
+
+      if (!salon) {
+        return res.status(403).json({ error: 'Access denied: Not a salon owner' });
+      }
+
+      const { data: payments, error } = await supabase
         .from('payments')
         .select(`
           *,
-          bookings(*, salons(owner_id))
+          users(email, full_name),
+          services(name, duration)
         `)
-        .eq('id', payment_id)
-        .single();
+        .eq('salon_id', salon.id)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
 
-      if (paymentError || !payment) {
-        throw new AppError('Payment not found', 404, 'PAYMENT_NOT_FOUND');
-      }
-
-      if (payment.bookings.salons.owner_id !== req.user.id) {
-        throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
-      }
-
-      if (payment.status !== 'completed') {
-        throw new AppError('Cannot refund incomplete payment', 400, 'INVALID_PAYMENT_STATUS');
-      }
-
-      // Process refund through Stripe
-      const refundAmount = amount ? Math.round(amount * 100) : null;
-      const refund = await stripeService.createRefund({
-        payment_intent: payment.stripe_payment_intent_id,
-        amount: refundAmount,
-        reason: reason || 'requested_by_customer'
-      });
-
-      // Update payment record
-      const { data: updatedPayment, error: updateError } = await supabase
-        .from('payments')
-        .update({
-          status: refund.amount === payment.amount * 100 ? 'refunded' : 'partially_refunded',
-          refund_amount: refund.amount / 100,
-          refund_reason: reason
-        })
-        .eq('id', payment_id)
-        .select()
-        .single();
-
-      if (updateError) {
-        throw new AppError('Failed to update payment record', 500, 'PAYMENT_UPDATE_FAILED');
-      }
-
-      res.status(200).json({
-        success: true,
-        data: {
-          payment: updatedPayment,
-          refund: {
-            id: refund.id,
-            amount: refund.amount / 100,
-            status: refund.status
-          }
-        }
-      });
-
-    } catch (error) {
-      if (error instanceof AppError) {
+      if (error) {
         throw error;
       }
-      throw new AppError('Failed to process refund', 500, 'REFUND_PROCESSING_FAILED');
+
+      res.json({
+        payments: payments || [],
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          hasMore: payments?.length === parseInt(limit)
+        }
+      });
+    } catch (error) {
+      console.error('Salon payments error:', error);
+      res.status(500).json({ error: 'Failed to retrieve salon payments' });
     }
-  });
+  }
 
-  // Get salon revenue analytics (salon owner only)
-  getRevenueAnalytics = asyncHandler(async (req, res) => {
-    const { period = '30', start_date, end_date } = req.query;
-
+  // Get payment analytics (salon owner only)
+  async getPaymentAnalytics(req, res) {
     try {
-      // Get user's salon
-      const { data: salon, error: salonError } = await supabase
+      const userId = req.user.id;
+      const { startDate, endDate } = req.query;
+
+      // Verify user owns a salon
+      const { data: salon } = await supabase
         .from('salons')
         .select('id')
-        .eq('owner_id', req.user.id)
+        .eq('owner_id', userId)
         .single();
 
-      if (salonError || !salon) {
-        throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
+      if (!salon) {
+        return res.status(403).json({ error: 'Access denied: Not a salon owner' });
       }
 
-      // Calculate date range
-      let dateFilter = '';
-      if (start_date && end_date) {
-        dateFilter = `processed_at.gte.${start_date},processed_at.lte.${end_date}`;
-      } else {
-        const daysAgo = new Date();
-        daysAgo.setDate(daysAgo.getDate() - parseInt(period));
-        dateFilter = `processed_at.gte.${daysAgo.toISOString()}`;
-      }
-
-      // Get revenue data (subscription-based model)
-      const { data: payments, error: paymentsError } = await supabase
+      let query = supabase
         .from('payments')
-        .select(`
-          amount,
-          processed_at,
-          bookings!inner(salon_id, services(*))
-        `)
-        .eq('bookings.salon_id', salon.id)
-        .eq('status', 'completed')
-        .filter('processed_at', 'not.is', null);
+        .select('amount, currency, created_at, status')
+        .eq('salon_id', salon.id)
+        .eq('status', 'succeeded');
 
-      if (paymentsError) {
-        throw new AppError('Failed to fetch revenue data', 500, 'REVENUE_DATA_FETCH_FAILED');
+      if (startDate) {
+        query = query.gte('created_at', startDate);
+      }
+      if (endDate) {
+        query = query.lte('created_at', endDate);
       }
 
-      // Calculate analytics (subscription-based model - no commissions)
+      const { data: payments, error } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      // Calculate analytics - NO COMMISSION DEDUCTIONS
       const totalRevenue = payments.reduce((sum, payment) => sum + payment.amount, 0);
-      const totalFees = 0; // No platform fees - revenue from subscriptions only
-      const netRevenue = totalRevenue; // 100% goes to salon owner
-      const totalBookings = payments.length;
+      const totalTransactions = payments.length;
+      const averageTransaction = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
-      // Group by service
-      const serviceBreakdown = payments.reduce((acc, payment) => {
-        const serviceName = payment.bookings.services.name;
-        if (!acc[serviceName]) {
-          acc[serviceName] = { count: 0, revenue: 0 };
-        }
-        acc[serviceName].count += 1;
-        acc[serviceName].revenue += payment.amount; // Full amount to salon
-        return acc;
-      }, {});
-
-      // Daily revenue for chart
+      // Group by date for trends
       const dailyRevenue = payments.reduce((acc, payment) => {
-        const date = payment.processed_at.split('T')[0];
-        if (!acc[date]) {
-          acc[date] = 0;
-        }
-        acc[date] += payment.amount; // Full amount to salon
+        const date = payment.created_at.split('T')[0];
+        acc[date] = (acc[date] || 0) + payment.amount;
         return acc;
       }, {});
 
-      res.status(200).json({
-        success: true,
-        data: {
-          summary: {
-            total_revenue: totalRevenue,
-            platform_fees: 0, // No platform fees - subscription model
-            net_revenue: netRevenue, // 100% to salon owner
-            total_bookings: totalBookings,
-            average_booking_value: totalBookings > 0 ? totalRevenue / totalBookings : 0
-          },
-          service_breakdown: serviceBreakdown,
-          daily_revenue: dailyRevenue,
-          period: { start_date, end_date, days: period },
-          revenue_model: "subscription_only" // No commission model
+      res.json({
+        totalRevenue,
+        totalTransactions,
+        averageTransaction,
+        dailyRevenue,
+        currency: payments[0]?.currency || 'usd'
+      });
+    } catch (error) {
+      console.error('Payment analytics error:', error);
+      res.status(500).json({ error: 'Failed to retrieve payment analytics' });
+    }
+  }
+
+  // Process subscription payment
+  async processSubscription(req, res) {
+    try {
+      const { planId, salonId } = req.body;
+      const userId = req.user.id;
+
+      if (!planId || !salonId) {
+        return res.status(400).json({ 
+          error: 'Missing required fields: planId, salonId' 
+        });
+      }
+
+      // Verify user owns the salon
+      const { data: salon } = await supabase
+        .from('salons')
+        .select('id, stripe_customer_id')
+        .eq('id', salonId)
+        .eq('owner_id', userId)
+        .single();
+
+      if (!salon) {
+        return res.status(403).json({ error: 'Access denied: Salon not found or not owned by user' });
+      }
+
+      // Get subscription plan details
+      const plan = config.subscription.plans[planId];
+      if (!plan) {
+        return res.status(400).json({ error: 'Invalid subscription plan' });
+      }
+
+      // Create subscription
+      const subscription = await stripeService.createSubscription({
+        customer: salon.stripe_customer_id,
+        price: plan.stripePriceId,
+        metadata: {
+          salonId: salon.id,
+          userId: userId,
+          planId: planId
         }
       });
 
+      res.json({
+        subscriptionId: subscription.id,
+        clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+        status: subscription.status
+      });
     } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
-      }
-      throw new AppError('Failed to fetch revenue analytics', 500, 'REVENUE_ANALYTICS_FAILED');
+      console.error('Subscription processing error:', error);
+      res.status(500).json({ error: 'Failed to process subscription' });
     }
-  });
+  }
+
+  // Handle successful payment webhook
+  async handlePaymentSuccess(paymentIntent) {
+    try {
+      const { error } = await supabase
+        .from('payments')
+        .update({ 
+          status: 'succeeded',
+          updated_at: new Date().toISOString()
+        })
+        .eq('stripe_payment_intent_id', paymentIntent.id);
+
+      if (error) {
+        console.error('Failed to update payment status:', error);
+      }
+
+      console.log(`Payment succeeded: ${paymentIntent.id}`);
+    } catch (error) {
+      console.error('Error handling payment success:', error);
+    }
+  }
+
+  // Handle failed payment webhook
+  async handlePaymentFailure(paymentIntent) {
+    try {
+      const { error } = await supabase
+        .from('payments')
+        .update({ 
+          status: 'failed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('stripe_payment_intent_id', paymentIntent.id);
+
+      if (error) {
+        console.error('Failed to update payment status:', error);
+      }
+
+      console.log(`Payment failed: ${paymentIntent.id}`);
+    } catch (error) {
+      console.error('Error handling payment failure:', error);
+    }
+  }
+
+  // Handle subscription changes webhook
+  async handleSubscriptionChange(subscription) {
+    try {
+      const salonId = subscription.metadata.salonId;
+      
+      if (!salonId) {
+        console.error('No salon ID in subscription metadata');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('salon_subscriptions')
+        .upsert({
+          salon_id: salonId,
+          stripe_subscription_id: subscription.id,
+          status: subscription.status,
+          current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+          current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error('Failed to update subscription status:', error);
+      }
+
+      console.log(`Subscription updated: ${subscription.id}`);
+    } catch (error) {
+      console.error('Error handling subscription change:', error);
+    }
+  }
 }
 
 module.exports = new PaymentController();

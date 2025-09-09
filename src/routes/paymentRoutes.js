@@ -3,19 +3,23 @@ const router = express.Router();
 const paymentController = require('../controllers/paymentController');
 const { authenticateToken } = require('../middleware/auth');
 
-// All payment routes require authentication
+// Webhook route (no auth required) - must be first
+router.post('/webhook', express.raw({ type: 'application/json' }), paymentController.handleWebhook);
+
+// All other payment routes require authentication
 router.use(authenticateToken);
 
 // Client payment routes
 router.post('/create-intent', paymentController.createPaymentIntent);
-router.post('/confirm', paymentController.confirmPayment);
-router.get('/methods', paymentController.getPaymentMethods);
-router.delete('/methods/:payment_method_id', paymentController.deletePaymentMethod);
+router.post('/confirm/:paymentIntentId', paymentController.confirmPayment);
 router.get('/history', paymentController.getPaymentHistory);
 
 // Salon owner payment routes
-router.post('/refund', paymentController.processRefund);
-router.get('/analytics', paymentController.getRevenueAnalytics);
+router.get('/salon', paymentController.getSalonPayments);
+router.get('/analytics', paymentController.getPaymentAnalytics);
+
+// Subscription routes
+router.post('/subscription', paymentController.processSubscription);
 
 module.exports = router;
 
