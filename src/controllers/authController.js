@@ -203,6 +203,176 @@ class AuthController {
       }
     });
   });
+
+  // Email/Password login
+  login = asyncHandler(async (req, res) => {
+    const { email, password, user_type } = req.body;
+
+    // Validate required fields
+    if (!email || !password) {
+      throw new AppError('Email and password are required', 400, 'MISSING_CREDENTIALS');
+    }
+
+    if (!user_type || !['client', 'salon_owner'].includes(user_type)) {
+      throw new AppError('Valid user type is required', 400, 'INVALID_USER_TYPE');
+    }
+
+    try {
+      // Sign in with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase().trim(),
+        password
+      });
+
+      if (authError) {
+        throw new AppError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
+      }
+
+      // Get user profile
+      const userProfile = await supabaseService.getUserProfile(authData.user.id);
+
+      // Verify user type matches
+      if (userProfile.user_type !== user_type) {
+        throw new AppError('Account type mismatch', 403, 'USER_TYPE_MISMATCH');
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          user: {
+            id: authData.user.id,
+            email: authData.user.email,
+            user_type: userProfile.user_type,
+            first_name: userProfile.first_name,
+            last_name: userProfile.last_name,
+            avatar_url: userProfile.avatar_url,
+            language: userProfile.language
+          },
+          session: {
+            access_token: authData.session.access_token,
+            refresh_token: authData.session.refresh_token,
+            expires_in: authData.session.expires_in,
+            token_type: 'bearer'
+          }
+        }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Login failed', 500, 'LOGIN_FAILED');
+    }
+  });
+
+  // Email/Password registration
+  register = asyncHandler(async (req, res) => {
+    const { email, password, full_name, user_type } = req.body;
+
+    // Validate required fields
+    if (!email || !password || !full_name) {
+      throw new AppError('Email, password, and full name are required', 400, 'MISSING_REQUIRED_FIELDS');
+    }
+
+    if (!user_type || !['client', 'salon_owner'].includes(user_type)) {
+      throw new AppError('Valid user type is required', 400, 'INVALID_USER_TYPE');
+    }
+
+    if (password.length < 6) {
+      throw new AppError('Password must be at least 6 characters long', 400, 'PASSWORD_TOO_SHORT');
+    }
+
+    try {
+      // Split full name into first and last name
+      const nameParts = full_name.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      // Sign up with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: email.toLowerCase().trim(),
+        password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+            full_name: full_name.trim(),
+            user_type: user_type
+          }
+        }
+      });
+
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          throw new AppError('Email already registered', 409, 'EMAIL_ALREADY_EXISTS');
+        }
+        throw new AppError('Registration failed', 400, 'REGISTRATION_FAILED');
+      }
+
+      if (!authData.user) {
+        throw new AppError('Registration failed - no user data', 500, 'REGISTRATION_FAILED');
+      }
+
+      // Create user profile
+      const profileData = {
+        id: authData.user.id,
+        user_type: user_type,
+        first_name: firstName,
+        last_name: lastName,
+        email: email.toLowerCase().trim(),
+        language: 'en'
+      };
+
+      const userProfile = await supabaseService.createUserProfile(profileData);
+
+      // If email confirmation is required, don't return session yet
+      if (!authData.session) {
+        res.status(201).json({
+          success: true,
+          message: 'Registration successful. Please check your email to confirm your account.',
+          data: {
+            user: {
+              id: authData.user.id,
+              email: authData.user.email,
+              user_type: userProfile.user_type,
+              first_name: userProfile.first_name,
+              last_name: userProfile.last_name
+            },
+            requires_email_confirmation: true
+          }
+        });
+        return;
+      }
+
+      // Return session if email confirmation is not required
+      res.status(201).json({
+        success: true,
+        data: {
+          user: {
+            id: authData.user.id,
+            email: authData.user.email,
+            user_type: userProfile.user_type,
+            first_name: userProfile.first_name,
+            last_name: userProfile.last_name,
+            avatar_url: userProfile.avatar_url,
+            language: userProfile.language
+          },
+          session: {
+            access_token: authData.session.access_token,
+            refresh_token: authData.session.refresh_token,
+            expires_in: authData.session.expires_in,
+            token_type: 'bearer'
+          }
+        }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Registration failed', 500, 'REGISTRATION_FAILED');
+    }
+  });
 }
 
 module.exports = new AuthController();

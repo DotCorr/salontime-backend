@@ -9,6 +9,10 @@ router.post('/oauth/generate-url', authController.generateOAuthUrl);
 router.post('/oauth/callback', authController.handleOAuthCallback);
 router.post('/refresh', authController.refreshToken);
 
+// Email/Password authentication routes
+router.post('/login', authController.login);
+router.post('/register', authController.register);
+
 // Protected routes (authentication required)
 router.get('/profile', authenticateToken, authController.getProfile);
 router.post('/signout', authenticateToken, authController.signOut);
