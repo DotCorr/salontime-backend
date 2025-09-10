@@ -238,12 +238,12 @@ class PaymentController {
   async getPaymentAnalytics(req, res) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate } = req.query;
+      const { period, start_date, end_date } = req.query;
 
       // Verify user owns a salon
       const { data: salon } = await supabase
         .from('salons')
-        .select('id')
+        .select('id, business_name')
         .eq('owner_id', userId)
         .single();
 
@@ -251,47 +251,152 @@ class PaymentController {
         return res.status(403).json({ error: 'Access denied: Not a salon owner' });
       }
 
-      let query = supabase
+      // Calculate date range
+      let startDate, endDate;
+      const now = new Date();
+
+      if (start_date && end_date) {
+        startDate = new Date(start_date);
+        endDate = new Date(end_date);
+      } else if (period) {
+        const days = parseInt(period);
+        if (isNaN(days) || days <= 0) {
+          return res.status(400).json({ error: 'Invalid period parameter' });
+        }
+        endDate = new Date(now);
+        startDate = new Date(now.getTime() - (days * 24 * 60 * 60 * 1000));
+      } else {
+        // Default to last 30 days
+        endDate = new Date(now);
+        startDate = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+      }
+
+      // Format dates for Supabase query
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+
+      // Get all successful payments within date range
+      const { data: payments, error } = await supabase
         .from('payments')
-        .select('amount, currency, created_at, status')
+        .select(`
+          amount,
+          currency,
+          created_at,
+          services(name, category),
+          bookings(appointment_date)
+        `)
         .eq('salon_id', salon.id)
-        .eq('status', 'succeeded');
-
-      if (startDate) {
-        query = query.gte('created_at', startDate);
-      }
-      if (endDate) {
-        query = query.lte('created_at', endDate);
-      }
-
-      const { data: payments, error } = await query;
+        .eq('status', 'succeeded')
+        .gte('created_at', startDateStr)
+        .lte('created_at', endDateStr)
+        .order('created_at', { ascending: false });
 
       if (error) {
         throw error;
       }
 
-      // Calculate analytics - NO COMMISSION DEDUCTIONS
+      // Calculate comprehensive analytics
       const totalRevenue = payments.reduce((sum, payment) => sum + payment.amount, 0);
       const totalTransactions = payments.length;
       const averageTransaction = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
-      // Group by date for trends
+      // Revenue by service category
+      const revenueByCategory = payments.reduce((acc, payment) => {
+        const category = payment.services?.category || 'Other';
+        acc[category] = (acc[category] || 0) + payment.amount;
+        return acc;
+      }, {});
+
+      // Daily revenue trend
       const dailyRevenue = payments.reduce((acc, payment) => {
         const date = payment.created_at.split('T')[0];
         acc[date] = (acc[date] || 0) + payment.amount;
         return acc;
       }, {});
 
+      // Monthly revenue trend (for longer periods)
+      const monthlyRevenue = payments.reduce((acc, payment) => {
+        const date = new Date(payment.created_at);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        acc[monthKey] = (acc[monthKey] || 0) + payment.amount;
+        return acc;
+      }, {});
+
+      // Top performing services
+      const serviceRevenue = payments.reduce((acc, payment) => {
+        const serviceName = payment.services?.name || 'Unknown Service';
+        if (!acc[serviceName]) {
+          acc[serviceName] = { revenue: 0, count: 0 };
+        }
+        acc[serviceName].revenue += payment.amount;
+        acc[serviceName].count += 1;
+        return acc;
+      }, {});
+
+      const topServices = Object.entries(serviceRevenue)
+        .map(([name, data]) => ({
+          name,
+          revenue: data.revenue,
+          transactionCount: data.count,
+          averageValue: data.revenue / data.count
+        }))
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 10);
+
+      // Calculate growth metrics
+      const previousPeriodStart = new Date(startDate.getTime() - (endDate.getTime() - startDate.getTime()));
+      const previousPeriodEnd = new Date(startDate);
+
+      const { data: previousPayments } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('salon_id', salon.id)
+        .eq('status', 'succeeded')
+        .gte('created_at', previousPeriodStart.toISOString().split('T')[0])
+        .lt('created_at', previousPeriodEnd.toISOString().split('T')[0]);
+
+      const previousRevenue = previousPayments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+      const revenueGrowth = previousRevenue > 0 ? ((totalRevenue - previousRevenue) / previousRevenue) * 100 : 0;
+
       res.json({
-        totalRevenue,
-        totalTransactions,
-        averageTransaction,
-        dailyRevenue,
-        currency: payments[0]?.currency || 'usd'
+        success: true,
+        data: {
+          salon: {
+            id: salon.id,
+            name: salon.business_name
+          },
+          period: {
+            start_date: startDateStr,
+            end_date: endDateStr,
+            days: Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
+          },
+          summary: {
+            totalRevenue,
+            totalTransactions,
+            averageTransaction,
+            currency: payments[0]?.currency || 'usd'
+          },
+          growth: {
+            previousPeriodRevenue: previousRevenue,
+            revenueGrowth: Math.round(revenueGrowth * 100) / 100 // Round to 2 decimal places
+          },
+          trends: {
+            daily: dailyRevenue,
+            monthly: monthlyRevenue
+          },
+          breakdown: {
+            byCategory: revenueByCategory,
+            topServices
+          }
+        }
       });
     } catch (error) {
       console.error('Payment analytics error:', error);
-      res.status(500).json({ error: 'Failed to retrieve payment analytics' });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve payment analytics',
+        code: 'ANALYTICS_ERROR'
+      });
     }
   }
 

@@ -141,7 +141,7 @@ run_test "Available slots calculation" "grep -q 'getAvailableSlots' src/controll
 # Check if payment system is complete
 run_test "Payment intent creation" "grep -q 'createPaymentIntent' src/controllers/paymentController.js"
 run_test "Payment confirmation" "grep -q 'confirmPayment' src/controllers/paymentController.js"
-run_test "Revenue analytics" "grep -q 'getRevenueAnalytics' src/controllers/paymentController.js"
+run_test "Revenue analytics" "grep -q 'getPaymentAnalytics' src/controllers/paymentController.js"
 
 # Check if email system is implemented
 run_test "Booking confirmation emails" "grep -q 'sendBookingConfirmation' src/services/emailService.js"
