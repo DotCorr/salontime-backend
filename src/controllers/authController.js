@@ -267,6 +267,7 @@ class AuthController {
 
   // Email/Password registration
   register = asyncHandler(async (req, res) => {
+    console.log('Registration request body:', req.body);
     const { email, password, full_name, user_type } = req.body;
 
     // Validate required fields
@@ -288,25 +289,29 @@ class AuthController {
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || '';
 
-      // Sign up with Supabase Auth
+      // Sign up with Supabase Auth using regular client (not admin)
+      console.log('Attempting signup with email:', email.toLowerCase().trim());
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.toLowerCase().trim(),
-        password,
-        options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-            full_name: full_name.trim(),
-            user_type: user_type
-          }
-        }
+        password
       });
+      console.log('Auth signup result:', { user: authData?.user?.id, error: authError });
 
       if (authError) {
-        if (authError.message.includes('already registered')) {
+        console.log('Auth error details:', JSON.stringify(authError, null, 2));
+        console.log('Auth error message:', authError.message);
+        console.log('Auth error status:', authError.status);
+        if (authError.message && (
+          authError.message.includes('already registered') ||
+          authError.message.includes('already been registered') ||
+          authError.message.includes('User already registered') ||
+          authError.message.includes('email address is already registered') ||
+          authError.message.includes('email already exists') ||
+          authError.message.includes('already exists')
+        )) {
           throw new AppError('Email already registered', 409, 'EMAIL_ALREADY_EXISTS');
         }
-        throw new AppError('Registration failed', 400, 'REGISTRATION_FAILED');
+        throw new AppError('Registration failed: ' + (authError.message || 'Unknown error'), 400, 'REGISTRATION_FAILED');
       }
 
       if (!authData.user) {
@@ -319,11 +324,12 @@ class AuthController {
         user_type: user_type,
         first_name: firstName,
         last_name: lastName,
-        email: email.toLowerCase().trim(),
         language: 'en'
       };
 
+      console.log('Creating profile with data:', profileData);
       const userProfile = await supabaseService.createUserProfile(profileData);
+      console.log('Profile created successfully:', userProfile);
 
       // If email confirmation is required, don't return session yet
       if (!authData.session) {

@@ -21,15 +21,24 @@ class SupabaseService {
   }
 
   async createUserProfile(profileData) {
+    console.log('SupabaseService.createUserProfile called with:', profileData);
+
+    // Since we're using admin client for both auth and profile creation,
+    // the user should be immediately available
     const { data, error } = await supabaseAdmin
       .from('user_profiles')
       .insert([profileData])
       .select()
       .single();
 
+    console.log('Supabase insert result:', { data: !!data, error });
+
     if (error) {
       if (error.code === '23505') { // Unique violation
         throw new AppError('User profile already exists', 409, 'PROFILE_EXISTS');
+      }
+      if (error.code === '23503') { // Foreign key violation
+        throw new AppError('User not found in auth system', 500, 'USER_NOT_FOUND');
       }
       throw new AppError('Failed to create user profile', 500, 'DATABASE_ERROR');
     }

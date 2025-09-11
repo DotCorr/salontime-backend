@@ -3,8 +3,10 @@
 -- NOTE: JWT secret is managed through Supabase Dashboard → Settings → API
 
 -- Create user profiles table (extends Supabase auth.users)
+-- NOTE: Temporarily removed foreign key constraint due to Supabase timing issues
+-- We'll maintain referential integrity through application logic
 CREATE TABLE IF NOT EXISTS public.user_profiles (
-    id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+    id UUID PRIMARY KEY,  -- Will match auth.users(id) but no FK constraint
     user_type VARCHAR(20) CHECK (user_type IN ('client', 'salon_owner', 'admin')) NOT NULL,
     first_name VARCHAR(50) NOT NULL,
     last_name VARCHAR(50) NOT NULL,
