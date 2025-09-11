@@ -1,8 +1,6 @@
 -- SalonTime Database Schema for Supabase
 -- Run these commands in your Supabase SQL Editor
-
--- Enable RLS (Row Level Security)
-ALTER DATABASE postgres SET "app.jwt_secret" TO 'your-jwt-secret';
+-- NOTE: JWT secret is managed through Supabase Dashboard → Settings → API
 
 -- Create user profiles table (extends Supabase auth.users)
 CREATE TABLE IF NOT EXISTS public.user_profiles (
@@ -198,12 +196,15 @@ ALTER TABLE public.stripe_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
--- User profiles: users can read/update their own profile
+-- User profiles: users can read/update their own profile, service role can create profiles
 CREATE POLICY "Users can view own profile" ON public.user_profiles
     FOR SELECT USING (auth.uid() = id);
 
 CREATE POLICY "Users can update own profile" ON public.user_profiles
     FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Service role can create user profiles" ON public.user_profiles
+    FOR INSERT WITH CHECK (auth.jwt() ->> 'role' = 'service_role');
 
 -- Salons: salon owners can manage their salons, clients can view active salons
 CREATE POLICY "Salon owners can manage their salons" ON public.salons

@@ -11,7 +11,7 @@ const stripe = config.stripe.secret_key
 // Test Stripe connection
 const testStripeConnection = async () => {
   if (!stripe) {
-    console.log('⚠️  Stripe not configured - add STRIPE_SECRET_KEY to enable payments');
+    console.log('⚠️  Stripe not configured - payments will be disabled');
     return;
   }
 
@@ -19,7 +19,8 @@ const testStripeConnection = async () => {
     await stripe.accounts.list({ limit: 1 });
     console.log('✅ Stripe connection established');
   } catch (error) {
-    console.error('❌ Stripe connection failed:', error.message);
+    console.log('⚠️  Stripe connection failed - payments will be disabled');
+    console.log('   Fix: Add valid STRIPE_SECRET_KEY to .env file');
   }
 };
 

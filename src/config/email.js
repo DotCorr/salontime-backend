@@ -17,15 +17,16 @@ const transporter = config.email.smtp_user && config.email.smtp_pass
 // Test email connection
 const testEmailConnection = async () => {
   if (!transporter) {
-    console.log('⚠️  Email not configured - add SMTP credentials to enable emails');
+    console.log('⚠️  Email not configured - notifications will be disabled');
     return;
   }
 
   try {
     await transporter.verify();
-    console.log('✅ Email service connection established');
+    console.log('✅ Email connection established');
   } catch (error) {
-    console.error('❌ Email service connection failed:', error.message);
+    console.log('⚠️  Email connection failed - notifications will be disabled');
+    console.log('   Fix: Add valid EMAIL_* credentials to .env file');
   }
 };
 
