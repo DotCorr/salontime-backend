@@ -296,6 +296,8 @@ class AuthController {
         password
       });
       console.log('Auth signup result:', { user: authData?.user?.id, error: authError });
+      console.log('Session exists:', !!authData?.session);
+      console.log('Email confirmed:', authData?.user?.email_confirmed_at);
 
       if (authError) {
         console.log('Auth error details:', JSON.stringify(authError, null, 2));
@@ -332,7 +334,7 @@ class AuthController {
       console.log('Profile created successfully:', userProfile);
 
       // If email confirmation is required, don't return session yet
-      if (!authData.session) {
+      if (!authData.session || (authData.user && !authData.user.email_confirmed_at)) {
         res.status(201).json({
           success: true,
           message: 'Registration successful. Please check your email to confirm your account.',
@@ -378,8 +380,34 @@ class AuthController {
       }
       throw new AppError('Registration failed', 500, 'REGISTRATION_FAILED');
     }
-  });
-}
+  // Resend confirmation email
+  resendConfirmation = asyncHandler(async (req, res) => {
+    const { email } = req.body;
 
-module.exports = new AuthController();
+    if (!email) {
+      throw new AppError('Email is required', 400, 'MISSING_EMAIL');
+    }
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.toLowerCase().trim(),
+      });
+
+      if (error) {
+        throw new AppError('Failed to resend confirmation email', 400, 'RESEND_FAILED');
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Confirmation email sent successfully'
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to resend confirmation email', 500, 'RESEND_FAILED');
+    }
+  });
 
