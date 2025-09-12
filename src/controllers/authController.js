@@ -1,6 +1,7 @@
 const { supabase } = require('../config/database');
 const supabaseService = require('../services/supabaseService');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
+const { transporter, isEmailEnabled, fromEmail } = require('../config/email');
 
 class AuthController {
   // Generate OAuth URL for WebView
@@ -335,6 +336,9 @@ class AuthController {
 
       // If email confirmation is required, don't return session yet
       if (!authData.session || (authData.user && !authData.user.email_confirmed_at)) {
+        console.log(`📧 Email confirmation required for: ${authData.user.email}`);
+        console.log(`📧 Email confirmed status: ${authData.user.email_confirmed_at ? 'Yes' : 'No'}`);
+
         res.status(201).json({
           success: true,
           message: 'Registration successful. Please check your email to confirm your account.',
@@ -391,18 +395,51 @@ class AuthController {
     }
 
     try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: email.toLowerCase().trim(),
-      });
+      let emailSent = false;
 
-      if (error) {
-        throw new AppError('Failed to resend confirmation email', 400, 'RESEND_FAILED');
+      // Try SMTP first if configured
+      if (isEmailEnabled && transporter) {
+        try {
+          const mailOptions = {
+            from: fromEmail,
+            to: email.toLowerCase().trim(),
+            subject: 'Confirm your SalonTime account',
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2>Welcome to SalonTime!</h2>
+                <p>Please confirm your email address to complete your registration.</p>
+                <p>If you didn't create an account, you can safely ignore this email.</p>
+                <br>
+                <p>Best regards,<br>The SalonTime Team</p>
+              </div>
+            `
+          };
+
+          await transporter.sendMail(mailOptions);
+          emailSent = true;
+          console.log(`✅ Confirmation email sent via SMTP to: ${email}`);
+        } catch (smtpError) {
+          console.warn('⚠️  SMTP email failed, falling back to Supabase:', smtpError.message);
+        }
+      }
+
+      // Fallback to Supabase if SMTP failed or not configured
+      if (!emailSent) {
+        const { error } = await supabase.auth.resend({
+          type: 'signup',
+          email: email.toLowerCase().trim(),
+        });
+
+        if (error) {
+          throw new AppError('Failed to resend confirmation email', 400, 'RESEND_FAILED');
+        }
+        console.log(`✅ Confirmation email sent via Supabase to: ${email}`);
       }
 
       res.status(200).json({
         success: true,
-        message: 'Confirmation email sent successfully'
+        message: 'Confirmation email sent successfully',
+        method: emailSent ? 'smtp' : 'supabase'
       });
 
     } catch (error) {
