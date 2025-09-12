@@ -23,15 +23,17 @@ class SupabaseService {
   async createUserProfile(profileData) {
     console.log('SupabaseService.createUserProfile called with:', profileData);
 
-    // Since we're using admin client for both auth and profile creation,
-    // the user should be immediately available
+    // Use upsert to handle existing profiles and prevent duplicates
     const { data, error } = await supabaseAdmin
       .from('user_profiles')
-      .insert([profileData])
+      .upsert([profileData], { 
+        onConflict: 'id',
+        ignoreDuplicates: false 
+      })
       .select()
       .single();
 
-    console.log('Supabase insert result:', { data: !!data, error });
+    console.log('Supabase upsert result:', { data: !!data, error });
 
     if (error) {
       if (error.code === '23505') { // Unique violation

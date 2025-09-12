@@ -380,6 +380,8 @@ class AuthController {
       }
       throw new AppError('Registration failed', 500, 'REGISTRATION_FAILED');
     }
+  });
+
   // Resend confirmation email
   resendConfirmation = asyncHandler(async (req, res) => {
     const { email } = req.body;
@@ -410,4 +412,7 @@ class AuthController {
       throw new AppError('Failed to resend confirmation email', 500, 'RESEND_FAILED');
     }
   });
+}
+
+module.exports = new AuthController();
 
