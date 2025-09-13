@@ -165,16 +165,30 @@ CREATE POLICY "Salon owners can manage their Stripe accounts" ON stripe_accounts
 CREATE POLICY "Service role can manage all stripe accounts" ON stripe_accounts
   FOR ALL USING (auth.role() = 'service_role');
 
--- Create notification_preferences table
-CREATE TABLE IF NOT EXISTS public.notification_preferences (
-    user_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE PRIMARY KEY,
-    booking_confirmations BOOLEAN DEFAULT true,
-    appointment_reminders BOOLEAN DEFAULT true,
-    payment_confirmations BOOLEAN DEFAULT true,
-    review_requests BOOLEAN DEFAULT true,
-    marketing_emails BOOLEAN DEFAULT false,
-    push_notifications BOOLEAN DEFAULT true
+-- Create waitlist table for booking reservations when slots are full
+CREATE TABLE IF NOT EXISTS public.waitlist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    salon_id UUID REFERENCES public.salons(id) ON DELETE CASCADE,
+    service_id UUID REFERENCES public.services(id) ON DELETE CASCADE,
+    staff_id UUID REFERENCES public.staff(id),
+    requested_date DATE NOT NULL,
+    requested_time TIME NOT NULL,
+    preferred_time_range TEXT, -- e.g., "morning", "afternoon", "evening"
+    status VARCHAR(20) DEFAULT 'waiting' CHECK (status IN ('waiting', 'notified', 'confirmed', 'expired', 'cancelled')),
+    notification_sent BOOLEAN DEFAULT false,
+    notification_sent_at TIMESTAMP WITH TIME ZONE,
+    expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '7 days'),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Create indexes for waitlist performance
+CREATE INDEX IF NOT EXISTS idx_waitlist_client_id ON public.waitlist(client_id);
+CREATE INDEX IF NOT EXISTS idx_waitlist_salon_id ON public.waitlist(salon_id);
+CREATE INDEX IF NOT EXISTS idx_waitlist_requested_date ON public.waitlist(requested_date);
+CREATE INDEX IF NOT EXISTS idx_waitlist_status ON public.waitlist(status);
+CREATE INDEX IF NOT EXISTS idx_waitlist_expires_at ON public.waitlist(expires_at);
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_user_profiles_user_type ON public.user_profiles(user_type);
@@ -196,6 +210,7 @@ ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.family_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stripe_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.waitlist ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
 -- User profiles: users can read/update their own profile, service role can create profiles
@@ -241,14 +256,27 @@ CREATE POLICY "Salon owners can manage salon bookings" ON public.bookings
         )
     );
 
--- Add updated_at trigger function
-CREATE OR REPLACE FUNCTION public.handle_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+-- Waitlist policies
+CREATE POLICY "Clients can manage their waitlist entries" ON public.waitlist
+    FOR ALL USING (auth.uid() = client_id);
+
+CREATE POLICY "Salon owners can view waitlist for their salon" ON public.waitlist
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.salons 
+            WHERE salons.id = waitlist.salon_id 
+            AND salons.owner_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Salon owners can update waitlist entries for their salon" ON public.waitlist
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM public.salons 
+            WHERE salons.id = waitlist.salon_id 
+            AND salons.owner_id = auth.uid()
+        )
+    );
 
 -- Add updated_at triggers
 CREATE TRIGGER handle_user_profiles_updated_at
@@ -265,5 +293,9 @@ CREATE TRIGGER handle_bookings_updated_at
 
 CREATE TRIGGER handle_stripe_accounts_updated_at
     BEFORE UPDATE ON public.stripe_accounts
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_waitlist_updated_at
+    BEFORE UPDATE ON public.waitlist
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 

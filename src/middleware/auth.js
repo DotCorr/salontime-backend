@@ -52,8 +52,35 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
+// Middleware to check user role
+const requireRole = (allowedRoles) => {
+  return (req, res, next) => {
+    try {
+      if (!req.user) {
+        throw new AppError('Authentication required', 401, 'AUTH_REQUIRED');
+      }
+
+      // Get user role from user metadata or profile
+      const userRole = req.user.user_metadata?.user_type || req.user.role;
+
+      if (!userRole) {
+        throw new AppError('User role not found', 403, 'ROLE_NOT_FOUND');
+      }
+
+      if (!allowedRoles.includes(userRole)) {
+        throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+};
+
 module.exports = {
   authenticateToken,
-  optionalAuth
+  optionalAuth,
+  requireRole
 };
 

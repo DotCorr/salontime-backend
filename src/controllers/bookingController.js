@@ -302,6 +302,15 @@ class BookingController {
           booking.salons,
           staff_notes || 'Booking cancelled'
         );
+
+        // Process waitlist for cancelled booking
+        const waitlistController = require('./waitlistController');
+        await waitlistController.processWaitlistForCancelledBooking(
+          booking.salon_id,
+          booking.service_id,
+          booking.appointment_date,
+          booking.start_time
+        );
       }
 
       res.status(200).json({

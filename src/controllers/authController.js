@@ -2,6 +2,7 @@ const { supabase } = require('../config/database');
 const supabaseService = require('../services/supabaseService');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 const { transporter, isEmailEnabled, fromEmail } = require('../config/email');
+const cron = require('node-cron');
 
 class AuthController {
   // Generate OAuth URL for WebView
@@ -449,7 +450,102 @@ class AuthController {
       throw new AppError('Failed to resend confirmation email', 500, 'RESEND_FAILED');
     }
   });
+
+  // Cleanup unverified accounts (static method for cron job)
+  static async cleanupUnverifiedAccounts() {
+    try {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      // Get unverified users older than 7 days
+      const { data: unverifiedUsers, error: fetchError } = await supabase
+        .from('user_profiles')
+        .select('id, created_at, user_type')
+        .lt('created_at', sevenDaysAgo.toISOString());
+
+      if (fetchError) {
+        throw new Error(`Failed to fetch unverified users: ${fetchError.message}`);
+      }
+
+      if (!unverifiedUsers || unverifiedUsers.length === 0) {
+        console.log('ℹ️  No unverified accounts to clean up');
+        return;
+      }
+
+      // Check which users are actually unverified in Supabase Auth
+      const userIdsToDelete = [];
+      for (const user of unverifiedUsers) {
+        try {
+          const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(user.id);
+
+          if (authError || !authUser.user) {
+            console.log(`⚠️  Auth user not found for profile ${user.id}, skipping`);
+            continue;
+          }
+
+          // Check if email is confirmed
+          if (!authUser.user.email_confirmed_at) {
+            userIdsToDelete.push(user.id);
+            console.log(`🗑️  Marked unverified account for deletion: ${user.id} (${user.user_type})`);
+          }
+        } catch (error) {
+          console.error(`❌ Error checking auth status for user ${user.id}:`, error.message);
+        }
+      }
+
+      if (userIdsToDelete.length === 0) {
+        console.log('ℹ️  No unverified accounts found to delete');
+        return;
+      }
+
+      // Delete user profiles
+      const { error: deleteError } = await supabase
+        .from('user_profiles')
+        .delete()
+        .in('id', userIdsToDelete);
+
+      if (deleteError) {
+        throw new Error(`Failed to delete user profiles: ${deleteError.message}`);
+      }
+
+      // Delete from Supabase Auth
+      for (const userId of userIdsToDelete) {
+        try {
+          await supabase.auth.admin.deleteUser(userId);
+          console.log(`✅ Deleted unverified account: ${userId}`);
+        } catch (error) {
+          console.error(`❌ Failed to delete auth user ${userId}:`, error.message);
+        }
+      }
+
+      console.log(`🧹 Cleaned up ${userIdsToDelete.length} unverified accounts`);
+
+    } catch (error) {
+      console.error('❌ Error during unverified account cleanup:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new AuthController();
+
+// Schedule cleanup of unverified accounts (runs daily at 2 AM)
+cron.schedule('0 2 * * *', async () => {
+  console.log('🧹 Running scheduled cleanup of unverified accounts...');
+  try {
+    await AuthController.cleanupUnverifiedAccounts();
+    console.log('✅ Unverified account cleanup completed');
+  } catch (error) {
+    console.error('❌ Error during unverified account cleanup:', error);
+  }
+
+  console.log('🧹 Running scheduled cleanup of expired waitlist entries...');
+  try {
+    const waitlistController = require('./waitlistController');
+    await waitlistController.cleanupExpiredWaitlistEntries();
+    console.log('✅ Waitlist cleanup completed');
+  } catch (error) {
+    console.error('❌ Error during waitlist cleanup:', error);
+  }
+});
 

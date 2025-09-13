@@ -136,6 +136,46 @@ class EmailService {
     }
   }
 
+  // Send waitlist confirmation email
+  async sendWaitlistConfirmation(waitlistEntry, client, salon) {
+    if (!this._checkEmailEnabled()) return null;
+
+    try {
+      const mailOptions = {
+        from: this.fromEmail,
+        to: client.email,
+        subject: 'Waitlist Confirmation - SalonTime',
+        html: this._generateWaitlistConfirmationTemplate(waitlistEntry, client, salon),
+      };
+
+      const result = await this.transporter.sendMail(mailOptions);
+      return result;
+    } catch (error) {
+      console.error('Failed to send waitlist confirmation email:', error);
+      return null;
+    }
+  }
+
+  // Send waitlist notification when slot becomes available
+  async sendWaitlistNotification(waitlistEntry, client, salon) {
+    if (!this._checkEmailEnabled()) return null;
+
+    try {
+      const mailOptions = {
+        from: this.fromEmail,
+        to: client.email,
+        subject: 'Appointment Slot Available - SalonTime',
+        html: this._generateWaitlistNotificationTemplate(waitlistEntry, client, salon),
+      };
+
+      const result = await this.transporter.sendMail(mailOptions);
+      return result;
+    } catch (error) {
+      console.error('Failed to send waitlist notification email:', error);
+      return null;
+    }
+  }
+
   // Generate booking confirmation template
   _generateBookingConfirmationTemplate(booking, client, salon) {
     return `
@@ -439,6 +479,121 @@ class EmailService {
             </div>
           </div>
         </body>
+      </html>
+    `;
+  }
+
+  // Generate waitlist confirmation template
+  _generateWaitlistConfirmationTemplate(waitlistEntry, client, salon) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: #FF6B35; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; background: #f9f9f9; }
+          .waitlist-details { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; }
+          .footer { text-align: center; padding: 20px; color: #666; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Added to Waitlist!</h1>
+          </div>
+          <div class="content">
+            <p>Hi ${client.first_name},</p>
+            <p>You've been added to the waitlist for your requested appointment. We'll notify you as soon as a slot becomes available.</p>
+
+            <div class="waitlist-details">
+              <h3>Waitlist Details</h3>
+              <p><strong>Salon:</strong> ${salon.business_name}</p>
+              <p><strong>Requested Date:</strong> ${waitlistEntry.requested_date}</p>
+              ${waitlistEntry.requested_time ? `<p><strong>Preferred Time:</strong> ${waitlistEntry.requested_time}</p>` : ''}
+              <p><strong>Service:</strong> ${waitlistEntry.service_name}</p>
+              ${waitlistEntry.preferred_time_range ? `<p><strong>Time Range:</strong> ${waitlistEntry.preferred_time_range}</p>` : ''}
+              <p><strong>Position:</strong> You'll be notified when your turn comes up</p>
+            </div>
+
+            <p><strong>What happens next?</strong></p>
+            <ul>
+              <li>We'll monitor for cancellations and availability</li>
+              <li>You'll receive an email when a slot opens up</li>
+              <li>You'll have a limited time to book the available slot</li>
+              <li>If you don't respond, the slot may go to the next person</li>
+            </ul>
+
+            <p>You can manage your waitlist entries in the SalonTime app.</p>
+          </div>
+          <div class="footer">
+            <p>Thank you for using SalonTime!</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  // Generate waitlist notification template
+  _generateWaitlistNotificationTemplate(waitlistEntry, client, salon) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: #28a745; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; background: #f9f9f9; }
+          .notification { background: #d4edda; border: 1px solid #c3e6cb; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .action-button { display: inline-block; background: #FF6B35; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 10px 0; }
+          .footer { text-align: center; padding: 20px; color: #666; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🎉 Slot Available!</h1>
+          </div>
+          <div class="content">
+            <p>Hi ${client.first_name},</p>
+
+            <div class="notification">
+              <h3>Great news! An appointment slot has opened up for you!</h3>
+              <p>A cancellation has made this time available. This is your chance to book the appointment you were waiting for.</p>
+            </div>
+
+            <div class="waitlist-details">
+              <h3>Available Slot Details</h3>
+              <p><strong>Salon:</strong> ${salon.business_name}</p>
+              <p><strong>Date:</strong> ${waitlistEntry.requested_date}</p>
+              ${waitlistEntry.requested_time ? `<p><strong>Time:</strong> ${waitlistEntry.requested_time}</p>` : ''}
+              <p><strong>Service:</strong> ${waitlistEntry.service_name}</p>
+            </div>
+
+            <p><strong>⏰ Limited Time Offer</strong></p>
+            <p>You have 24 hours to book this slot before it becomes available to others on the waitlist.</p>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="#" class="action-button">Book This Slot Now</a>
+            </div>
+
+            <p>If you can't make this time, you can:
+            <ul>
+              <li>Book a different available time</li>
+              <li>Stay on the waitlist for future openings</li>
+              <li>Remove yourself from the waitlist</li>
+            </ul>
+
+            <p>Don't miss this opportunity!</p>
+          </div>
+          <div class="footer">
+            <p>Thank you for using SalonTime!</p>
+          </div>
+        </div>
+      </body>
       </html>
     `;
   }

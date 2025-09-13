@@ -17,6 +17,7 @@ const bookingRoutes = require('./routes/bookingRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const onboardingRoutes = require('./routes/onboardingRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const waitlistRoutes = require('./routes/waitlistRoutes');
 
 // Validate configuration
 config.validate();
@@ -84,6 +85,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/waitlist', waitlistRoutes);
 
 // Stripe webhook endpoint (must be before other middleware)
 app.post('/webhook/stripe', express.raw({ type: 'application/json' }), (req, res) => {
