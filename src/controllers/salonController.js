@@ -1,4 +1,4 @@
-const { supabase } = require('../config/database');
+const { supabase, supabaseAdmin } = require('../config/database');
 const stripeService = require('../services/stripeService');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 
@@ -9,6 +9,9 @@ class SalonController {
       business_name,
       description,
       address,
+      city,
+      state,
+      zip_code,
       phone,
       email,
       business_hours
@@ -17,6 +20,15 @@ class SalonController {
     // Validate required fields
     if (!business_name) {
       throw new AppError('Business name is required', 400, 'MISSING_BUSINESS_NAME');
+    }
+    if (!city) {
+      throw new AppError('City is required', 400, 'MISSING_CITY');
+    }
+    if (!state) {
+      throw new AppError('State is required', 400, 'MISSING_STATE');
+    }
+    if (!zip_code) {
+      throw new AppError('Zip code is required', 400, 'MISSING_ZIP_CODE');
     }
 
     try {
@@ -31,14 +43,17 @@ class SalonController {
         throw new AppError('User already has a salon registered', 409, 'SALON_ALREADY_EXISTS');
       }
 
-      // Create salon record
-      const { data: salon, error } = await supabase
+      // Create salon record (use admin client to bypass RLS)
+      const { data: salon, error } = await supabaseAdmin
         .from('salons')
         .insert([{
           owner_id: req.user.id,
           business_name,
           description,
           address,
+          city,
+          state,
+          zip_code,
           phone,
           email,
           business_hours
@@ -47,6 +62,7 @@ class SalonController {
         .single();
 
       if (error) {
+        console.error('Database insert error:', error);
         throw new AppError('Failed to create salon', 500, 'SALON_CREATION_FAILED');
       }
 
@@ -73,7 +89,7 @@ class SalonController {
         });
 
         // Update salon with Stripe account ID
-        await supabase
+        await supabaseAdmin
           .from('salons')
           .update({
             stripe_account_id: stripeAccount.id,
@@ -82,7 +98,7 @@ class SalonController {
           .eq('id', salon.id);
 
         // Create Stripe account record in database
-        await supabase
+        await supabaseAdmin
           .from('stripe_accounts')
           .insert([{
             salon_id: salon.id,
@@ -134,6 +150,7 @@ class SalonController {
       });
 
     } catch (error) {
+      console.error('Salon creation error:', error);
       if (error instanceof AppError) {
         throw error;
       }
