@@ -246,8 +246,14 @@ class StripeService {
     const sig = req.headers['stripe-signature'];
     let event;
 
+    console.log('Webhook signature:', sig);
+    console.log('Webhook secret:', process.env.STRIPE_WEBHOOK_SECRET ? 'Set' : 'Not set');
+    console.log('Body type:', typeof req.body);
+    console.log('Body length:', req.body ? req.body.length : 'No body');
+
     try {
       event = this.stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+      console.log('Webhook event type:', event.type);
     } catch (err) {
       console.error('Webhook signature verification failed:', err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -256,6 +262,7 @@ class StripeService {
     try {
       switch (event.type) {
         case 'account.updated':
+        case 'connect.account.updated':
           await this.handleAccountUpdated(event.data.object);
           break;
         case 'payment_intent.succeeded':
@@ -295,35 +302,53 @@ class StripeService {
     const { supabaseAdmin } = require('../config/database');
     
     try {
+      console.log('Processing account update for:', account.id);
+      console.log('Account details:', {
+        charges_enabled: account.charges_enabled,
+        payouts_enabled: account.payouts_enabled,
+        details_submitted: account.details_submitted,
+        requirements: account.requirements
+      });
+
+      const isActive = account.charges_enabled && account.payouts_enabled;
+      const status = isActive ? 'active' : 'pending';
+
       // Update stripe_accounts table
       const { error: accountsError } = await supabaseAdmin
         .from('stripe_accounts')
         .update({
-          account_status: account.charges_enabled && account.payouts_enabled ? 'active' : 'pending',
+          account_status: status,
           charges_enabled: account.charges_enabled,
           payouts_enabled: account.payouts_enabled,
+          details_submitted: account.details_submitted,
           capabilities: account.capabilities,
-          requirements: account.requirements
+          requirements: account.requirements,
+          updated_at: new Date().toISOString()
         })
         .eq('stripe_account_id', account.id);
 
       if (accountsError) {
         console.error('Failed to update Stripe account status:', accountsError);
+      } else {
+        console.log('✅ Updated stripe_accounts table');
       }
 
       // Also update salons table
       const { error: salonsError } = await supabaseAdmin
         .from('salons')
         .update({
-          stripe_account_status: account.charges_enabled && account.payouts_enabled ? 'active' : 'pending'
+          stripe_account_status: status,
+          updated_at: new Date().toISOString()
         })
         .eq('stripe_account_id', account.id);
 
       if (salonsError) {
         console.error('Failed to update salon Stripe status:', salonsError);
+      } else {
+        console.log('✅ Updated salons table');
       }
 
-      console.log(`Updated Stripe account ${account.id} status: ${account.charges_enabled && account.payouts_enabled ? 'active' : 'pending'}`);
+      console.log(`🎉 Updated Stripe account ${account.id} status: ${status}`);
     } catch (error) {
       console.error('Error handling account update webhook:', error);
     }
