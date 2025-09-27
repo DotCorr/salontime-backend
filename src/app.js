@@ -53,6 +53,17 @@ const limiter = rateLimit({
   legacyHeaders: false
 });
 
+// Stripe webhook endpoint (MUST be before JSON parsing middleware)
+app.post('/webhook/stripe', express.raw({ type: 'application/json' }), (req, res) => {
+  console.log('Webhook received:', req.headers['stripe-signature']);
+  console.log('Webhook body type:', typeof req.body);
+  console.log('Webhook body length:', req.body ? req.body.length : 'No body');
+  
+  // This will be handled by the Stripe service
+  const stripeService = require('./services/stripeService');
+  stripeService.handleWebhook(req, res);
+});
+
 // Apply rate limiting to API routes
 app.use('/api/', limiter);
 
@@ -86,17 +97,6 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/waitlist', waitlistRoutes);
-
-// Stripe webhook endpoint (must be before other middleware)
-app.post('/webhook/stripe', express.raw({ type: 'application/json' }), (req, res) => {
-  console.log('Webhook received:', req.headers['stripe-signature']);
-  console.log('Webhook body type:', typeof req.body);
-  console.log('Webhook body length:', req.body ? req.body.length : 'No body');
-  
-  // This will be handled by the Stripe service
-  const stripeService = require('./services/stripeService');
-  stripeService.handleWebhook(req, res);
-});
 
 // Root endpoint
 app.get('/', (req, res) => {
