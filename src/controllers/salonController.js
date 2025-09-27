@@ -398,8 +398,22 @@ class SalonController {
         .eq('owner_id', req.user.id)
         .single();
 
-      if (salonError || !salon || !salon.stripe_account_id) {
-        throw new AppError('Salon or Stripe account not found', 404, 'SALON_OR_STRIPE_NOT_FOUND');
+      console.log('Salon lookup result:', { salon, salonError });
+      console.log('User ID:', req.user.id);
+
+      if (salonError) {
+        console.error('Salon lookup error:', salonError);
+        throw new AppError(`Salon lookup failed: ${salonError.message}`, 404, 'SALON_NOT_FOUND');
+      }
+
+      if (!salon) {
+        console.error('No salon found for user:', req.user.id);
+        throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
+      }
+
+      if (!salon.stripe_account_id) {
+        console.error('No Stripe account ID found for salon:', salon.id);
+        throw new AppError('Stripe account not found for this salon', 404, 'STRIPE_ACCOUNT_NOT_FOUND');
       }
 
       const returnUrl = `${process.env.FRONTEND_URL}/salon-owner/stripe/return`;
