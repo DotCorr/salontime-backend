@@ -292,21 +292,38 @@ class StripeService {
 
   // Handle Stripe Connect account updates
   async handleAccountUpdated(account) {
-    const { supabase } = require('../config/database');
+    const { supabaseAdmin } = require('../config/database');
     
     try {
-      const { error } = await supabase
+      // Update stripe_accounts table
+      const { error: accountsError } = await supabaseAdmin
         .from('stripe_accounts')
         .update({
-          status: account.charges_enabled && account.payouts_enabled ? 'active' : 'pending',
+          account_status: account.charges_enabled && account.payouts_enabled ? 'active' : 'pending',
+          charges_enabled: account.charges_enabled,
+          payouts_enabled: account.payouts_enabled,
           capabilities: account.capabilities,
           requirements: account.requirements
         })
         .eq('stripe_account_id', account.id);
 
-      if (error) {
-        console.error('Failed to update Stripe account status:', error);
+      if (accountsError) {
+        console.error('Failed to update Stripe account status:', accountsError);
       }
+
+      // Also update salons table
+      const { error: salonsError } = await supabaseAdmin
+        .from('salons')
+        .update({
+          stripe_account_status: account.charges_enabled && account.payouts_enabled ? 'active' : 'pending'
+        })
+        .eq('stripe_account_id', account.id);
+
+      if (salonsError) {
+        console.error('Failed to update salon Stripe status:', salonsError);
+      }
+
+      console.log(`Updated Stripe account ${account.id} status: ${account.charges_enabled && account.payouts_enabled ? 'active' : 'pending'}`);
     } catch (error) {
       console.error('Error handling account update webhook:', error);
     }
