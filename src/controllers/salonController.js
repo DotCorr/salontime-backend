@@ -194,18 +194,24 @@ class SalonController {
   // Get current user's salon
   getMySalon = asyncHandler(async (req, res) => {
     try {
-      const { data: salon, error } = await supabase
+      console.log('Looking for salon with owner_id:', req.user.id);
+      
+      const { data: salon, error } = await supabaseAdmin
         .from('salons')
-        .select(`
-          *,
-          services(*),
-          staff(*),
-          stripe_accounts(*)
-        `)
+        .select('*')
         .eq('owner_id', req.user.id)
         .single();
 
+      console.log('Salon query result:', { salon, error });
+
       if (error || !salon) {
+        // Let's also check what salons exist in the database
+        const { data: allSalons, error: allSalonsError } = await supabaseAdmin
+          .from('salons')
+          .select('id, owner_id, business_name')
+          .limit(5);
+        
+        console.log('All salons in database:', { allSalons, allSalonsError });
         throw new AppError('No salon found for this user', 404, 'SALON_NOT_FOUND');
       }
 
@@ -353,14 +359,22 @@ class SalonController {
       console.log('Updating salon with Stripe account ID:', stripeAccount.id);
       console.log('Salon ID:', salon.id);
       
-      const { data: updateData, error: updateError } = await supabase
+      // First, let's check if the salon exists with this ID
+      const { data: checkSalon, error: checkError } = await supabaseAdmin
+        .from('salons')
+        .select('id, stripe_account_id, stripe_account_status')
+        .eq('id', salon.id);
+      
+      console.log('Salon check result:', { checkSalon, checkError });
+      
+      const { data: updateData, error: updateError } = await supabaseAdmin
         .from('salons')
         .update({
           stripe_account_id: stripeAccount.id,
           stripe_account_status: 'pending'
         })
         .eq('id', salon.id)
-        .select();
+        .select('id, stripe_account_id, stripe_account_status');
 
       console.log('Salon update result:', { updateData, updateError });
 
@@ -370,7 +384,7 @@ class SalonController {
       }
 
       // Create Stripe account record
-      await supabase
+      await supabaseAdmin
         .from('stripe_accounts')
         .insert([{
           salon_id: salon.id,
@@ -399,7 +413,7 @@ class SalonController {
   generateStripeOnboardingLink = asyncHandler(async (req, res) => {
     try {
       // Get user's salon
-      const { data: salon, error: salonError } = await supabase
+      const { data: salon, error: salonError } = await supabaseAdmin
         .from('salons')
         .select('*')
         .eq('owner_id', req.user.id)
