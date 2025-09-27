@@ -350,15 +350,22 @@ class SalonController {
       });
 
       // Update salon with Stripe account ID
-      const { error: updateError } = await supabase
+      console.log('Updating salon with Stripe account ID:', stripeAccount.id);
+      console.log('Salon ID:', salon.id);
+      
+      const { data: updateData, error: updateError } = await supabase
         .from('salons')
         .update({
           stripe_account_id: stripeAccount.id,
           stripe_account_status: 'pending'
         })
-        .eq('id', salon.id);
+        .eq('id', salon.id)
+        .select();
+
+      console.log('Salon update result:', { updateData, updateError });
 
       if (updateError) {
+        console.error('Salon update error:', updateError);
         throw new AppError('Failed to update salon with Stripe account', 500, 'SALON_UPDATE_FAILED');
       }
 
