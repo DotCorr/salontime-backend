@@ -31,6 +31,10 @@ class StripeService {
           mcc: '7230', // Beauty shops
           url: salonData.website || undefined,
         },
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
         metadata: {
           salon_id: salonData.salon_id,
           owner_id: salonData.owner_id,
@@ -39,6 +43,17 @@ class StripeService {
 
       return account;
     } catch (error) {
+      console.error('Stripe Connect account creation error:', error);
+      
+      // Provide more specific error messages
+      if (error.message.includes('responsibilities of managing losses')) {
+        throw new AppError(
+          'Stripe Connect platform not properly configured. Please complete the platform profile setup at https://dashboard.stripe.com/settings/connect/platform-profile',
+          503,
+          'STRIPE_CONNECT_NOT_CONFIGURED'
+        );
+      }
+      
       throw new AppError(`Stripe account creation failed: ${error.message}`, 500, 'STRIPE_ACCOUNT_CREATION_FAILED');
     }
   }
