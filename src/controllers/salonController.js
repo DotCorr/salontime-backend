@@ -462,6 +462,52 @@ class SalonController {
     }
   });
 
+  // Get Stripe dashboard link
+  getStripeDashboardLink = asyncHandler(async (req, res) => {
+    try {
+      // Get user's salon
+      const { data: salon, error: salonError } = await supabaseAdmin
+        .from('salons')
+        .select('*')
+        .eq('owner_id', req.user.id)
+        .single();
+
+      if (salonError) {
+        throw new AppError(`Salon lookup failed: ${salonError.message}`, 404, 'SALON_NOT_FOUND');
+      }
+
+      if (!salon) {
+        throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
+      }
+
+      if (!salon.stripe_account_id) {
+        throw new AppError('Stripe account not found for this salon', 404, 'STRIPE_ACCOUNT_NOT_FOUND');
+      }
+
+      // Check if account is fully onboarded
+      if (salon.stripe_account_status !== 'active') {
+        throw new AppError('Stripe account not fully onboarded', 400, 'ACCOUNT_NOT_READY');
+      }
+
+      // Generate dashboard link using Stripe's createLoginLink
+      const dashboardLink = await stripeService.createDashboardLink(salon.stripe_account_id);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          dashboard_url: dashboardLink.url,
+          expires_at: dashboardLink.expires_at
+        }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to generate dashboard link', 500, 'DASHBOARD_LINK_FAILED');
+    }
+  });
+
   // Get Stripe account status
   getStripeAccountStatus = asyncHandler(async (req, res) => {
     try {

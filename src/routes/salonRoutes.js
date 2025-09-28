@@ -18,6 +18,7 @@ router.put('/my/salon', salonController.updateSalon);
 // Stripe Connect routes
 router.post('/stripe/account', salonController.createStripeAccount);
 router.get('/stripe/onboarding-link', salonController.generateStripeOnboardingLink);
+router.get('/stripe/dashboard-link', salonController.getStripeDashboardLink);
 
 module.exports = router;
 
