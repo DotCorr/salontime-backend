@@ -24,3 +24,4 @@ try {
   console.log('\n💡 Make sure Stripe CLI is running:');
   console.log('   stripe listen --forward-to localhost:3000/webhook/stripe');
 }
+

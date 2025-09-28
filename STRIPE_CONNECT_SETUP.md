@@ -40,3 +40,4 @@ After setup, test with:
 1. Create a Stripe account (should return 201)
 2. Get onboarding link (should return 200 with URL)
 3. Complete onboarding flow in Flutter app
+

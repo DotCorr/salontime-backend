@@ -43,3 +43,4 @@ STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret_here
 ## 🚀 **After Setup**
 
 Once configured, the status will automatically update when users complete Stripe onboarding!
+

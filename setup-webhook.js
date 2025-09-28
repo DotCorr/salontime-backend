@@ -48,3 +48,5 @@ if (envContent.includes('STRIPE_WEBHOOK_SECRET=')) {
 console.log('\n🚀 To start the webhook listener, run:');
 console.log('   stripe listen --forward-to localhost:3000/webhook/stripe');
 console.log('\n📡 This will forward Stripe events to your local server!');
+
+

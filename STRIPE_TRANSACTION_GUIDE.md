@@ -79,3 +79,4 @@ const subscription = await stripe.subscriptions.create({
 4. **Webhook updates** → Status and payment records
 
 You're all set for transactions! 🎉
+
