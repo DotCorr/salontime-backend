@@ -1,4 +1,4 @@
-const { supabase } = require('../config/database');
+const supabaseService = require('../services/supabaseService');
 const emailService = require('../services/emailService');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 
@@ -22,7 +22,7 @@ class BookingController {
 
     try {
       // Get service details
-      const { data: service, error: serviceError } = await supabase
+      const { data: service, error: serviceError } = await supabaseService.supabaseService.supabase
         .from('services')
         .select('*, salons(*)')
         .eq('id', service_id)
@@ -38,7 +38,7 @@ class BookingController {
       const endTimeStr = endTime.toTimeString().split(' ')[0].slice(0, 5);
 
       // Check for conflicts
-      const { data: conflicts } = await supabase
+      const { data: conflicts } = await supabaseService.supabase
         .from('bookings')
         .select('id')
         .eq('salon_id', salon_id)
@@ -54,7 +54,7 @@ class BookingController {
       // Determine client ID (could be family member)
       let clientId = req.user.id;
       if (family_member_id) {
-        const { data: familyMember } = await supabase
+        const { data: familyMember } = await supabaseService.supabase
           .from('family_members')
           .select('id')
           .eq('id', family_member_id)
@@ -67,7 +67,7 @@ class BookingController {
       }
 
       // Create booking
-      const { data: booking, error: bookingError } = await supabase
+      const { data: booking, error: bookingError } = await supabaseService.supabase
         .from('bookings')
         .insert([{
           client_id: clientId,
@@ -94,7 +94,7 @@ class BookingController {
       }
 
       // Send confirmation email
-      const { data: client } = await supabase
+      const { data: client } = await supabaseService.supabase
         .from('user_profiles')
         .select('*')
         .eq('id', clientId)
@@ -149,10 +149,22 @@ class BookingController {
         throw new AppError('Failed to fetch bookings', 500, 'BOOKINGS_FETCH_FAILED');
       }
 
+      // Flatten the nested data for easier frontend consumption
+      const flattenedBookings = bookings.map(booking => ({
+        ...booking,
+        salonName: booking.salons?.business_name || 'Unknown Salon',
+        serviceName: booking.services?.name || 'Unknown Service',
+        servicePrice: booking.services?.price || 0,
+        serviceDuration: booking.services?.duration || 0,
+        staffName: booking.staff?.name || 'Any Staff',
+        paymentStatus: booking.payments?.[0]?.status || 'pending',
+        paymentAmount: booking.payments?.[0]?.amount || 0,
+      }));
+
       res.status(200).json({
         success: true,
         data: {
-          bookings,
+          bookings: flattenedBookings,
           pagination: {
             page: parseInt(page),
             limit: parseInt(limit)
@@ -175,7 +187,7 @@ class BookingController {
 
     try {
       // Get user's salon
-      const { data: salon, error: salonError } = await supabase
+      const { data: salon, error: salonError } = await supabaseService.supabase
         .from('salons')
         .select('id')
         .eq('owner_id', req.user.id)
@@ -244,7 +256,7 @@ class BookingController {
 
     try {
       // Check if user owns the salon or is the client
-      const { data: booking, error: bookingError } = await supabase
+      const { data: booking, error: bookingError } = await supabaseService.supabase
         .from('bookings')
         .select(`
           *,
@@ -278,7 +290,7 @@ class BookingController {
         updateData.staff_notes = staff_notes;
       }
 
-      const { data: updatedBooking, error: updateError } = await supabase
+      const { data: updatedBooking, error: updateError } = await supabaseService.supabase
         .from('bookings')
         .update(updateData)
         .eq('id', bookingId)
@@ -336,7 +348,7 @@ class BookingController {
 
     try {
       // Get service duration
-      const { data: service, error: serviceError } = await supabase
+      const { data: service, error: serviceError } = await supabaseService.supabaseService.supabase
         .from('services')
         .select('duration')
         .eq('id', service_id)
@@ -347,7 +359,7 @@ class BookingController {
       }
 
       // Get salon business hours
-      const { data: salon, error: salonError } = await supabase
+      const { data: salon, error: salonError } = await supabaseService.supabase
         .from('salons')
         .select('business_hours')
         .eq('id', salon_id)

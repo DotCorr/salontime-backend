@@ -1,22 +1,21 @@
 const express = require('express');
 const router = express.Router();
-const serviceController = require('../controllers/serviceController');
 const { authenticateToken } = require('../middleware/auth');
+const serviceController = require('../controllers/serviceController');
 
-// Public routes
-router.get('/search', serviceController.searchServices);
-router.get('/categories', serviceController.getServiceCategories);
-router.get('/:serviceId', serviceController.getServiceDetails);
-router.get('/salon/:salon_id', serviceController.getSalonServices);
+// Get all services for a salon
+router.get('/', authenticateToken, serviceController.getSalonServices);
 
-// Protected routes (require authentication)
-router.use(authenticateToken);
+// Create a new service
+router.post('/', authenticateToken, serviceController.createService);
 
-// Salon owner service management routes
-router.post('/', serviceController.createService);
-router.get('/my/services', serviceController.getMyServices);
-router.put('/:serviceId', serviceController.updateService);
-router.delete('/:serviceId', serviceController.deleteService);
+// Get service categories
+router.get('/categories', authenticateToken, serviceController.getServiceCategories);
+
+// Update a service
+router.put('/:serviceId', authenticateToken, serviceController.updateService);
+
+// Delete a service
+router.delete('/:serviceId', authenticateToken, serviceController.deleteService);
 
 module.exports = router;
-

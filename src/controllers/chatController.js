@@ -345,6 +345,167 @@ class ChatController {
       message: 'Message deleted successfully'
     });
   });
+
+  getConversationDetails = asyncHandler(async (req, res) => {
+    const { conversationId } = req.params;
+    const userId = req.user.id;
+
+    try {
+      const { data: conversation, error } = await supabaseService.supabase
+        .from('conversations')
+        .select(`
+          *,
+          client:user_profiles!conversations_client_id_fkey(*),
+          salon:user_profiles!conversations_salon_id_fkey(*)
+        `)
+        .eq('id', conversationId)
+        .single();
+
+      if (error || !conversation) {
+        throw new AppError('Conversation not found', 404, 'CONVERSATION_NOT_FOUND');
+      }
+
+      // Check if user is part of the conversation
+      if (conversation.client_id !== userId && conversation.salon_id !== userId) {
+        throw new AppError('Unauthorized to view conversation', 403, 'UNAUTHORIZED');
+      }
+
+      res.status(200).json({
+        success: true,
+        data: { conversation }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to get conversation details', 500, 'FETCH_FAILED');
+    }
+  });
+
+  searchMessages = asyncHandler(async (req, res) => {
+    const { q, conversationId } = req.query;
+    const userId = req.user.id;
+
+    try {
+      let query = supabaseService.supabase
+        .from('messages')
+        .select(`
+          *,
+          sender:user_profiles!messages_sender_id_fkey(*)
+        `)
+        .ilike('content', `%${q}%`);
+
+      if (conversationId) {
+        query = query.eq('conversation_id', conversationId);
+      }
+
+      const { data: messages, error } = await query;
+
+      if (error) {
+        throw new AppError('Failed to search messages', 500, 'SEARCH_FAILED');
+      }
+
+      res.status(200).json({
+        success: true,
+        data: { messages }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to search messages', 500, 'SEARCH_FAILED');
+    }
+  });
+
+  archiveConversation = asyncHandler(async (req, res) => {
+    const { conversationId } = req.params;
+    const userId = req.user.id;
+
+    try {
+      const { error } = await supabaseService.supabase
+        .from('conversations')
+        .update({ is_archived: true })
+        .eq('id', conversationId)
+        .or(`client_id.eq.${userId},salon_id.eq.${userId}`);
+
+      if (error) {
+        throw new AppError('Failed to archive conversation', 500, 'ARCHIVE_FAILED');
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Conversation archived successfully'
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to archive conversation', 500, 'ARCHIVE_FAILED');
+    }
+  });
+
+  blockUser = asyncHandler(async (req, res) => {
+    const { conversationId } = req.params;
+    const userId = req.user.id;
+
+    try {
+      const { error } = await supabaseService.supabase
+        .from('conversations')
+        .update({ is_blocked: true })
+        .eq('id', conversationId)
+        .or(`client_id.eq.${userId},salon_id.eq.${userId}`);
+
+      if (error) {
+        throw new AppError('Failed to block user', 500, 'BLOCK_FAILED');
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'User blocked successfully'
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to block user', 500, 'BLOCK_FAILED');
+    }
+  });
+
+  reportConversation = asyncHandler(async (req, res) => {
+    const { conversationId } = req.params;
+    const { reason, description } = req.body;
+    const userId = req.user.id;
+
+    try {
+      const { error } = await supabaseService.supabase
+        .from('chat_reports')
+        .insert({
+          conversation_id: conversationId,
+          reporter_id: userId,
+          reason,
+          description
+        });
+
+      if (error) {
+        throw new AppError('Failed to report conversation', 500, 'REPORT_FAILED');
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Conversation reported successfully'
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to report conversation', 500, 'REPORT_FAILED');
+    }
+  });
 }
 
 module.exports = new ChatController();

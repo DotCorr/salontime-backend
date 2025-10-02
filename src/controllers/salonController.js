@@ -234,8 +234,11 @@ class SalonController {
       business_name,
       description,
       address,
+      city,
+      zip_code,
       phone,
       email,
+      website,
       business_hours
     } = req.body;
 
@@ -246,8 +249,11 @@ class SalonController {
           business_name,
           description,
           address,
+          city,
+          zip_code,
           phone,
           email,
+          website,
           business_hours
         })
         .eq('owner_id', req.user.id)
@@ -546,6 +552,81 @@ class SalonController {
         throw error;
       }
       throw new AppError('Failed to get Stripe account status', 500, 'STRIPE_STATUS_FETCH_FAILED');
+    }
+  });
+
+  // Get salon clients
+  getSalonClients = asyncHandler(async (req, res) => {
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (page - 1) * limit;
+
+    try {
+      // Get user's salon
+      const { data: salon, error: salonError } = await supabase
+        .from('salons')
+        .select('id')
+        .eq('owner_id', req.user.id)
+        .single();
+
+      if (salonError || !salon) {
+        throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
+      }
+
+      // Get clients who have bookings at this salon
+      const { data: clients, error } = await supabase
+        .from('bookings')
+        .select(`
+          client_id,
+          user_profiles!client_id(
+            id,
+            first_name,
+            last_name,
+            email,
+            phone,
+            avatar
+          )
+        `)
+        .eq('salon_id', salon.id)
+        .not('client_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (error) {
+        throw new AppError('Failed to fetch salon clients', 500, 'SALON_CLIENTS_FETCH_FAILED');
+      }
+
+      // Remove duplicates and flatten the data
+      const uniqueClients = clients.reduce((acc, booking) => {
+        const clientId = booking.client_id;
+        if (!acc.find(c => c.id === clientId)) {
+          acc.push({
+            id: booking.user_profiles.id,
+            first_name: booking.user_profiles.first_name,
+            last_name: booking.user_profiles.last_name,
+            email: booking.user_profiles.email,
+            phone: booking.user_profiles.phone,
+            avatar: booking.user_profiles.avatar
+          });
+        }
+        return acc;
+      }, []);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          clients: uniqueClients,
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit)
+          }
+        }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to fetch salon clients', 500, 'SALON_CLIENTS_FETCH_FAILED');
     }
   });
 }

@@ -14,6 +14,7 @@ router.use(authenticateToken);
 router.post('/', salonController.createSalon);
 router.get('/my/salon', salonController.getMySalon);
 router.put('/my/salon', salonController.updateSalon);
+router.get('/clients', salonController.getSalonClients);
 
 // Stripe Connect routes
 router.post('/stripe/account', salonController.createStripeAccount);
