@@ -18,6 +18,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const onboardingRoutes = require('./routes/onboardingRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const waitlistRoutes = require('./routes/waitlistRoutes');
+const chatRoutes = require('./routes/chatRoutes');
 
 // Validate configuration
 config.validate();
@@ -97,6 +98,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/waitlist', waitlistRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
