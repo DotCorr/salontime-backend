@@ -9,7 +9,12 @@ router.use(authenticateToken);
 
 // User profile management
 router.put('/profile', userController.updateProfile);
+router.get('/profile', userController.getProfile);
 router.get('/dashboard', userController.getDashboard);
+
+// Notification settings
+router.get('/notification-settings', userController.getNotificationSettings);
+router.put('/notification-settings', userController.updateNotificationSettings);
 
 module.exports = router;
 

@@ -19,8 +19,6 @@ class ServiceController {
       }
 
       const salonId = salon.id;
-
-    try {
       const offset = (page - 1) * limit;
 
       const { data: services, error } = await supabaseService.supabase
