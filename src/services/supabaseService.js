@@ -22,7 +22,44 @@ class SupabaseService {
       
       if (error.code === 'PGRST116') {
         console.log('❌ No user profile found for ID:', userId);
-        throw new AppError('User profile not found', 404, 'PROFILE_NOT_FOUND');
+        console.log('🔧 Attempting to create user profile automatically...');
+        
+        // Try to get user info from auth to create profile
+        try {
+          const { data: authUser, error: authError } = await supabase.auth.getUser();
+          if (authError || !authUser.user) {
+            throw new AppError('User not found in auth system', 404, 'USER_NOT_FOUND');
+          }
+          
+          // Create basic profile with auth data
+          const profileData = {
+            id: userId,
+            first_name: authUser.user.user_metadata?.first_name || 'User',
+            last_name: authUser.user.user_metadata?.last_name || '',
+            email: authUser.user.email,
+            role: 'client', // Default role
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          
+          console.log('🔧 Creating profile with data:', profileData);
+          const { data: newProfile, error: createError } = await supabase
+            .from('user_profiles')
+            .insert([profileData])
+            .select()
+            .single();
+            
+          if (createError) {
+            console.log('❌ Failed to create profile:', createError);
+            throw new AppError('Failed to create user profile', 500, 'PROFILE_CREATE_FAILED');
+          }
+          
+          console.log('✅ Profile created successfully:', newProfile);
+          return newProfile;
+        } catch (createError) {
+          console.log('❌ Error creating profile:', createError);
+          throw new AppError('User profile not found and could not be created', 404, 'PROFILE_NOT_FOUND');
+        }
       }
       throw new AppError('Failed to fetch user profile', 500, 'DATABASE_ERROR');
     }
