@@ -147,6 +147,11 @@ class AuthController {
   // Get current user profile
   getProfile = asyncHandler(async (req, res) => {
     try {
+      console.log('🔍 AuthController.getProfile called');
+      console.log('🔍 req.user:', req.user);
+      console.log('🔍 req.user.id:', req.user.id);
+      console.log('🔍 req.user.id type:', typeof req.user.id);
+      
       const userProfile = await supabaseService.getUserProfile(req.user.id);
 
       res.status(200).json({
@@ -168,6 +173,7 @@ class AuthController {
       });
 
     } catch (error) {
+      console.log('❌ AuthController.getProfile error:', error);
       if (error instanceof AppError) {
         throw error;
       }

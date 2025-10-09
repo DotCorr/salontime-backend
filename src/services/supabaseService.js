@@ -4,19 +4,30 @@ const { AppError } = require('../middleware/errorHandler');
 class SupabaseService {
   // User Profile Operations
   async getUserProfile(userId) {
+    console.log('🔍 SupabaseService.getUserProfile called with userId:', userId);
+    console.log('🔍 User ID type:', typeof userId);
+    
     const { data, error } = await supabase
       .from('user_profiles')
       .select('*')
       .eq('id', userId)
       .single();
 
+    console.log('🔍 Supabase query result - data:', data);
+    console.log('🔍 Supabase query result - error:', error);
+
     if (error) {
+      console.log('❌ Supabase error code:', error.code);
+      console.log('❌ Supabase error message:', error.message);
+      
       if (error.code === 'PGRST116') {
+        console.log('❌ No user profile found for ID:', userId);
         throw new AppError('User profile not found', 404, 'PROFILE_NOT_FOUND');
       }
       throw new AppError('Failed to fetch user profile', 500, 'DATABASE_ERROR');
     }
 
+    console.log('✅ User profile found:', data);
     return data;
   }
 
