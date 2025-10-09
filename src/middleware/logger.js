@@ -23,15 +23,17 @@ const logger = (req, res, next) => {
     console.log(`${timestamp} ${method} ${url} - ${ip}`);
   }
 
-  // Log to file
-  const logEntry = `${timestamp} ${method} ${url} - ${ip} - ${userAgent}\n`;
-  
-  // Async file writing to avoid blocking
-  fs.appendFile(path.join(logsDir, 'access.log'), logEntry, (err) => {
-    if (err) {
-      console.error('Failed to write to log file:', err);
-    }
-  });
+  // Log to file only in development
+  if (logsDir) {
+    const logEntry = `${timestamp} ${method} ${url} - ${ip} - ${userAgent}\n`;
+    
+    // Async file writing to avoid blocking
+    fs.appendFile(path.join(logsDir, 'access.log'), logEntry, (err) => {
+      if (err) {
+        console.error('Failed to write to log file:', err);
+      }
+    });
+  }
 
   // Override res.json to log response status
   const originalJson = res.json;
@@ -44,8 +46,11 @@ const logger = (req, res, next) => {
       console.log(`${endTime} ${method} ${url} - ${statusCode}`);
     }
 
-    const responseLog = `${endTime} ${method} ${url} - ${statusCode} - Response sent\n`;
-    fs.appendFile(path.join(logsDir, 'access.log'), responseLog, () => {});
+    // Log response to file only in development
+    if (logsDir) {
+      const responseLog = `${endTime} ${method} ${url} - ${statusCode} - Response sent\n`;
+      fs.appendFile(path.join(logsDir, 'access.log'), responseLog, () => {});
+    }
 
     return originalJson.call(this, body);
   };
