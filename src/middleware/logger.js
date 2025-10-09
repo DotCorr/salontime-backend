@@ -3,7 +3,8 @@ const path = require('path');
 
 // Only create logs directory in development
 let logsDir = null;
-if (process.env.NODE_ENV !== 'production') {
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+if (!isProduction) {
   logsDir = path.join(__dirname, '../../logs');
   if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
@@ -19,7 +20,7 @@ const logger = (req, res, next) => {
   const ip = req.ip || req.connection.remoteAddress || 'Unknown';
 
   // Log to console in development
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isProduction) {
     console.log(`${timestamp} ${method} ${url} - ${ip}`);
   }
 
@@ -42,7 +43,7 @@ const logger = (req, res, next) => {
     const statusCode = res.statusCode;
     
     // Log response
-    if (process.env.NODE_ENV !== 'production') {
+    if (!isProduction) {
       console.log(`${endTime} ${method} ${url} - ${statusCode}`);
     }
 
