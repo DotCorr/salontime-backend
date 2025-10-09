@@ -70,9 +70,7 @@ class UserController {
       
       res.status(200).json({
         success: true,
-        data: {
-          user: userProfile
-        }
+        data: userProfile
       });
     } catch (error) {
       console.error('Error fetching user profile:', error);
