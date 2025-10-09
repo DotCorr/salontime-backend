@@ -84,6 +84,13 @@ class OnboardingController {
         .select()
         .single();
 
+      // Debug logging
+      console.log('Salon creation:', {
+        userId: req.user.id,
+        salonData: salonData,
+        salonError: salonError
+      });
+
       if (salonError) {
         throw new AppError('Failed to create salon profile', 500, 'SALON_CREATION_FAILED');
       }
@@ -245,7 +252,7 @@ class OnboardingController {
       }
 
       // Get salon if exists
-      const { data: salon } = await supabase
+      const { data: salon, error: salonQueryError } = await supabase
         .from('salons')
         .select(`
           *,
@@ -253,6 +260,14 @@ class OnboardingController {
         `)
         .eq('owner_id', req.user.id)
         .single();
+
+      // Debug logging
+      console.log('Onboarding status check:', {
+        userId: req.user.id,
+        salonFound: !!salon,
+        salonData: salon,
+        salonQueryError: salonQueryError
+      });
 
       // Get services count
       let servicesCount = 0;
