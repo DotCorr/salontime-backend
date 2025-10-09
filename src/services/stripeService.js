@@ -19,10 +19,14 @@ class StripeService {
   async createConnectAccount(salonData) {
     this._checkStripeEnabled();
 
+    if (!salonData.country) {
+      throw new AppError('Country is required for Stripe account creation', 400, 'MISSING_COUNTRY');
+    }
+
     try {
       const account = await this.stripe.accounts.create({
         type: 'express',
-        country: salonData.country || 'US',
+        country: salonData.country,
         business_type: salonData.business_type || 'individual',
         email: salonData.email,
         business_profile: {

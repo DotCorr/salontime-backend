@@ -367,6 +367,10 @@ class SalonController {
         throw new AppError('Salon not found. Create a salon profile first.', 404, 'SALON_NOT_FOUND');
       }
 
+      if (!salon.address?.country) {
+        throw new AppError('Country is required for Stripe account creation. Please update your salon address.', 400, 'MISSING_COUNTRY');
+      }
+
       // Check if Stripe account already exists
       if (salon.stripe_account_id) {
         throw new AppError('Stripe account already exists for this salon', 409, 'STRIPE_ACCOUNT_EXISTS');
@@ -377,7 +381,7 @@ class SalonController {
         business_name: salon.business_name,
         salon_id: salon.id,
         owner_id: req.user.id,
-        country: salon.address?.country || 'NL'
+        country: salon.address?.country
       });
 
       // Update salon with Stripe account ID

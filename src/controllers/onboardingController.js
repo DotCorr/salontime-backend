@@ -23,7 +23,7 @@ class OnboardingController {
       city,
       state,
       zip_code,
-      country = 'US',
+      country,
       
       // Business Details
       business_hours,
@@ -32,12 +32,16 @@ class OnboardingController {
       website,
       
       // Stripe Information
-      bank_country = 'US',
-      currency = 'usd'
+      bank_country = country,
+      currency
     } = req.body;
 
     if (!business_name || !full_name) {
       throw new AppError('Business name and full name are required', 400, 'MISSING_REQUIRED_INFO');
+    }
+
+    if (!country) {
+      throw new AppError('Country is required for Stripe account creation', 400, 'MISSING_COUNTRY');
     }
 
     try {
