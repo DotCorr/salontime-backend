@@ -9,17 +9,14 @@ const logger = winston.createLogger({
     winston.format.json()
   ),
   defaultMeta: { service: 'salontime-backend' },
-  transports: process.env.NODE_ENV === 'production' ? [
-    // In production, only use console logging (Vercel doesn't allow file system writes)
+  transports: [
+    // Always use console logging in Vercel (no file system access)
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.simple()
       )
     })
-  ] : [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' })
   ]
 });
 
