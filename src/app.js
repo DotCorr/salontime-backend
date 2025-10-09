@@ -20,6 +20,7 @@ const onboardingRoutes = require('./routes/onboardingRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const waitlistRoutes = require('./routes/waitlistRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const userSettingsRoutes = require('./routes/userSettings');
 
 // Validate configuration
 config.validate();
@@ -93,6 +94,7 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/user', userSettingsRoutes);
 app.use('/api/salons', salonRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/bookings', bookingRoutes);

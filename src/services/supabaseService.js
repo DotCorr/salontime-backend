@@ -128,6 +128,78 @@ class SupabaseService {
 
     return true;
   }
+
+  // User Settings Operations
+  async getUserSettings(userId) {
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No settings found, create default settings
+        return await this.createUserSettings(userId);
+      }
+      throw new AppError('Failed to fetch user settings', 500, 'DATABASE_ERROR');
+    }
+
+    return data;
+  }
+
+  async createUserSettings(userId) {
+    const defaultSettings = {
+      user_id: userId,
+      language: 'en',
+      theme: 'light',
+      color_scheme: 'orange',
+      notifications_enabled: true,
+      email_notifications: true,
+      sms_notifications: false,
+      push_notifications: true,
+      booking_reminders: true,
+      marketing_emails: false,
+      location_sharing: true,
+      data_analytics: true
+    };
+
+    const { data, error } = await supabase
+      .from('user_settings')
+      .insert([defaultSettings])
+      .select()
+      .single();
+
+    if (error) {
+      throw new AppError('Failed to create user settings', 500, 'DATABASE_ERROR');
+    }
+
+    return data;
+  }
+
+  async updateUserSettings(userId, updates) {
+    const { data, error } = await supabase
+      .from('user_settings')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Settings don't exist, create them first
+        await this.createUserSettings(userId);
+        // Try update again
+        return await this.updateUserSettings(userId, updates);
+      }
+      throw new AppError('Failed to update user settings', 500, 'DATABASE_ERROR');
+    }
+
+    return data;
+  }
 }
 
 module.exports = new SupabaseService();

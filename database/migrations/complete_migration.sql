@@ -209,6 +209,28 @@ CREATE TABLE IF NOT EXISTS public.chat_reports (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- User settings table for cross-device synchronization
+CREATE TABLE IF NOT EXISTS public.user_settings (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    language VARCHAR(10) DEFAULT 'en',
+    theme VARCHAR(20) DEFAULT 'light' CHECK (theme IN ('light', 'dark', 'system')),
+    color_scheme VARCHAR(20) DEFAULT 'orange',
+    notifications_enabled BOOLEAN DEFAULT true,
+    email_notifications BOOLEAN DEFAULT true,
+    sms_notifications BOOLEAN DEFAULT false,
+    push_notifications BOOLEAN DEFAULT true,
+    booking_reminders BOOLEAN DEFAULT true,
+    marketing_emails BOOLEAN DEFAULT false,
+    location_sharing BOOLEAN DEFAULT true,
+    data_analytics BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Ensure one settings record per user
+    UNIQUE(user_id)
+);
+
 -- STEP 2: Add missing columns to existing tables (safe operations)
 DO $$
 BEGIN
@@ -247,6 +269,7 @@ CREATE INDEX IF NOT EXISTS idx_conversation_participants_conversation_id ON publ
 CREATE INDEX IF NOT EXISTS idx_conversation_participants_user_id ON public.conversation_participants(user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_reports_conversation_id ON public.chat_reports(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_chat_reports_reporter_id ON public.chat_reports(reporter_id);
+CREATE INDEX IF NOT EXISTS idx_user_settings_user_id ON public.user_settings(user_id);
 
 -- STEP 4: Insert default service categories (with error handling)
 DO $$
@@ -281,6 +304,7 @@ ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.conversation_participants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chat_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
 
 -- STEP 6: Drop existing policies if they exist (to avoid conflicts)
 DROP POLICY IF EXISTS "Users can view own profile" ON public.user_profiles;
@@ -320,6 +344,7 @@ DROP POLICY IF EXISTS "Users can view participants in their conversations" ON pu
 DROP POLICY IF EXISTS "Users can join conversations they're part of" ON public.conversation_participants;
 DROP POLICY IF EXISTS "Users can create reports for their conversations" ON public.chat_reports;
 DROP POLICY IF EXISTS "Users can view their own reports" ON public.chat_reports;
+DROP POLICY IF EXISTS "Users can manage their own settings" ON public.user_settings;
 
 -- STEP 7: Create or replace the updated_at function
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
@@ -743,6 +768,14 @@ EXCEPTION
     WHEN duplicate_object THEN NULL;
 END $$;
 
+DO $$
+BEGIN
+    CREATE POLICY "Users can manage their own settings" ON public.user_settings
+        FOR ALL USING (user_id = auth.uid());
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
 -- STEP 9: Create updated_at triggers
 DROP TRIGGER IF EXISTS handle_user_profiles_updated_at ON public.user_profiles;
 DROP TRIGGER IF EXISTS handle_salons_updated_at ON public.salons;
@@ -754,6 +787,7 @@ DROP TRIGGER IF EXISTS handle_services_updated_at ON public.services;
 DROP TRIGGER IF EXISTS handle_conversations_updated_at ON public.conversations;
 DROP TRIGGER IF EXISTS handle_messages_updated_at ON public.messages;
 DROP TRIGGER IF EXISTS handle_chat_reports_updated_at ON public.chat_reports;
+DROP TRIGGER IF EXISTS handle_user_settings_updated_at ON public.user_settings;
 
 CREATE TRIGGER handle_user_profiles_updated_at
     BEFORE UPDATE ON public.user_profiles
@@ -793,6 +827,10 @@ CREATE TRIGGER handle_messages_updated_at
 
 CREATE TRIGGER handle_chat_reports_updated_at
     BEFORE UPDATE ON public.chat_reports
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_user_settings_updated_at
+    BEFORE UPDATE ON public.user_settings
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- Migration completed successfully!
