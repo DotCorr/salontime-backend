@@ -1,33 +1,44 @@
-const winston = require('winston');
+// Check if we're in production (Vercel)
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
 
-// Configure logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  defaultMeta: { service: 'salontime-backend' },
-  transports: [
-    // Always use console logging in Vercel (no file system access)
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      )
-    })
-  ]
-});
-
-// Add console logging in development
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    )
-  }));
+// Simple logger without Winston (to avoid file system access issues on Vercel)
+const logger = {
+  error: (data) => {
+    if (typeof data === 'object') {
+      console.error(JSON.stringify({
+        level: 'error',
+        timestamp: new Date().toISOString(),
+        service: 'salontime-backend',
+        ...data
+      }));
+    } else {
+      console.error(data);
+    }
+  },
+  info: (data) => {
+    if (typeof data === 'object') {
+      console.log(JSON.stringify({
+        level: 'info',
+        timestamp: new Date().toISOString(),
+        service: 'salontime-backend',
+        ...data
+      }));
+    } else {
+      console.log(data);
+    }
+  },
+  warn: (data) => {
+    if (typeof data === 'object') {
+      console.warn(JSON.stringify({
+        level: 'warn',
+        timestamp: new Date().toISOString(),
+        service: 'salontime-backend',
+        ...data
+      }));
+    } else {
+      console.warn(data);
+    }
+  }
 }
 
 // Custom error class
@@ -92,7 +103,7 @@ const errorHandler = (err, req, res, next) => {
   };
 
   // Add stack trace in development
-  if (process.env.NODE_ENV === 'development') {
+  if (!isProduction) {
     response.error.stack = error.stack;
   }
 
