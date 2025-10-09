@@ -1,10 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 
-// Ensure logs directory exists
-const logsDir = path.join(__dirname, '../../logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
+// Only create logs directory in development
+let logsDir = null;
+if (process.env.NODE_ENV !== 'production') {
+  logsDir = path.join(__dirname, '../../logs');
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+  }
 }
 
 // Simple request logger middleware
