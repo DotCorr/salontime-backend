@@ -32,12 +32,26 @@ class SalonController {
     }
 
     try {
+      // Debug logging
+      console.log('Salon creation request:', {
+        userId: req.user.id,
+        businessName: business_name,
+        city: city,
+        state: state,
+        zipCode: zip_code
+      });
+
       // Check if user already has a salon
-      const { data: existingSalon } = await supabase
+      const { data: existingSalon, error: existingSalonError } = await supabase
         .from('salons')
         .select('id')
         .eq('owner_id', req.user.id)
         .single();
+
+      console.log('Existing salon check:', {
+        existingSalon: existingSalon,
+        existingSalonError: existingSalonError
+      });
 
       if (existingSalon) {
         throw new AppError('User already has a salon registered', 409, 'SALON_ALREADY_EXISTS');
@@ -60,6 +74,11 @@ class SalonController {
         }])
         .select()
         .single();
+
+      console.log('Salon creation result:', {
+        salon: salon,
+        error: error
+      });
 
       if (error) {
         console.error('Database insert error:', error);
