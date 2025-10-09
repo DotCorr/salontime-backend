@@ -66,7 +66,7 @@ class UserController {
   // Get user profile
   getProfile = asyncHandler(async (req, res) => {
     try {
-      const userProfile = await supabaseService.getUserProfile(req.user.id);
+      const userProfile = await supabaseService.getUserProfileOrCreate(req.user.id);
       
       res.status(200).json({
         success: true,

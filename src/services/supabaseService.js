@@ -22,7 +22,23 @@ class SupabaseService {
       
       if (error.code === 'PGRST116') {
         console.log('❌ No user profile found for ID:', userId);
-        console.log('🔧 Attempting to create user profile automatically...');
+        throw new AppError('User profile not found', 404, 'PROFILE_NOT_FOUND');
+      }
+      throw new AppError('Failed to fetch user profile', 500, 'DATABASE_ERROR');
+    }
+
+    console.log('✅ User profile found:', data);
+    return data;
+  }
+
+  // Auto-create user profile if it doesn't exist (for new users)
+  async getUserProfileOrCreate(userId) {
+    try {
+      // First try to get existing profile
+      return await this.getUserProfile(userId);
+    } catch (error) {
+      if (error.code === 'PROFILE_NOT_FOUND') {
+        console.log('🔧 Profile not found, attempting to create automatically...');
         
         // Try to get user info from auth to create profile
         try {
@@ -61,11 +77,8 @@ class SupabaseService {
           throw new AppError('User profile not found and could not be created', 404, 'PROFILE_NOT_FOUND');
         }
       }
-      throw new AppError('Failed to fetch user profile', 500, 'DATABASE_ERROR');
+      throw error;
     }
-
-    console.log('✅ User profile found:', data);
-    return data;
   }
 
   async createUserProfile(profileData) {
