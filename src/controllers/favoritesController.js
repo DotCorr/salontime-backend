@@ -1,11 +1,10 @@
-const { supabase } = require('../config/database');
-const asyncHandler = require('../middleware/asyncHandler');
-const AppError = require('../utils/appError');
+const supabaseService = require('../services/supabaseService');
+const { asyncHandler, AppError } = require('../middleware/errorHandler');
 
 // Get user's favorite salons
 const getFavorites = asyncHandler(async (req, res) => {
   try {
-    const { data: favorites, error } = await supabase
+    const { data: favorites, error } = await supabaseService.supabase
       .from('user_favorites')
       .select(`
         *,
@@ -48,7 +47,7 @@ const addFavorite = asyncHandler(async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseService.supabase
       .from('user_favorites')
       .insert({
         user_id: req.user.id,
@@ -85,7 +84,7 @@ const removeFavorite = asyncHandler(async (req, res) => {
   }
 
   try {
-    const { error } = await supabase
+    const { error } = await supabaseService.supabase
       .from('user_favorites')
       .delete()
       .eq('user_id', req.user.id)
@@ -116,7 +115,7 @@ const checkFavorite = asyncHandler(async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseService.supabase
       .from('user_favorites')
       .select('id')
       .eq('user_id', req.user.id)
