@@ -239,10 +239,8 @@ class AuthController {
       // Get user profile
       const userProfile = await supabaseService.getUserProfile(authData.user.id);
 
-      // Verify user type matches
-      if (userProfile.user_type !== user_type) {
-        throw new AppError('Account type mismatch', 403, 'USER_TYPE_MISMATCH');
-      }
+      // Note: Removed user type verification to allow role switching
+      // Users can now login with any role and switch between client/salon_owner
 
       res.status(200).json({
         success: true,
