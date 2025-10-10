@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const favoritesController = require('../controllers/favoritesController');
-const { authenticate } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 // Apply authentication to all routes
-router.use(authenticate);
+router.use(authenticateToken);
 
 // GET /api/favorites - Get user's favorite salons
 router.get('/', favoritesController.getFavorites);
