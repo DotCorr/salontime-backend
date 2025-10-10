@@ -2,6 +2,11 @@
 -- This script is completely safe to run multiple times
 -- It handles all conditions: tables exist, don't exist, columns exist, don't exist, etc.
 
+-- STEP 0: Enable required extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "vector";
+
 -- STEP 1: Create all tables first (in dependency order)
 CREATE TABLE IF NOT EXISTS public.user_profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -831,6 +836,116 @@ CREATE TRIGGER handle_chat_reports_updated_at
 
 CREATE TRIGGER handle_user_settings_updated_at
     BEFORE UPDATE ON public.user_settings
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+-- AI & Recommendation Tables
+CREATE TABLE IF NOT EXISTS public.salon_embeddings (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    salon_id UUID NOT NULL REFERENCES public.salons(id) ON DELETE CASCADE,
+    embedding VECTOR(384), -- OpenAI text-embedding-ada-002 dimensions
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    UNIQUE(salon_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.user_interactions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    salon_id UUID NOT NULL REFERENCES public.salons(id) ON DELETE CASCADE,
+    interaction_type VARCHAR(50) NOT NULL CHECK (interaction_type IN ('view', 'book', 'cancel', 'review', 'favorite', 'share')),
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.user_embeddings (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    embedding VECTOR(384),
+    preferences JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    UNIQUE(user_id)
+);
+
+-- Indexes for AI tables
+CREATE INDEX IF NOT EXISTS idx_salon_embeddings_salon_id ON public.salon_embeddings(salon_id);
+CREATE INDEX IF NOT EXISTS idx_user_interactions_user_id ON public.user_interactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_interactions_salon_id ON public.user_interactions(salon_id);
+CREATE INDEX IF NOT EXISTS idx_user_interactions_type ON public.user_interactions(interaction_type);
+CREATE INDEX IF NOT EXISTS idx_user_interactions_created_at ON public.user_interactions(created_at);
+CREATE INDEX IF NOT EXISTS idx_user_embeddings_user_id ON public.user_embeddings(user_id);
+
+-- Vector similarity search function
+CREATE OR REPLACE FUNCTION match_salons(
+    query_embedding VECTOR(384),
+    match_threshold FLOAT DEFAULT 0.7,
+    match_count INT DEFAULT 10
+)
+RETURNS TABLE (
+    salon_id UUID,
+    similarity FLOAT,
+    business_name TEXT,
+    description TEXT,
+    rating_average FLOAT,
+    rating_count INT,
+    distance_km FLOAT
+)
+LANGUAGE SQL
+AS $$
+    SELECT 
+        se.salon_id,
+        1 - (se.embedding <=> query_embedding) AS similarity,
+        s.business_name,
+        s.description,
+        s.rating_average,
+        s.rating_count,
+        0.0 AS distance_km -- Will be calculated in application
+    FROM salon_embeddings se
+    JOIN salons s ON se.salon_id = s.id
+    WHERE 1 - (se.embedding <=> query_embedding) > match_threshold
+    ORDER BY se.embedding <=> query_embedding
+    LIMIT match_count;
+$$;
+
+-- RLS for AI tables
+ALTER TABLE public.salon_embeddings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_interactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_embeddings ENABLE ROW LEVEL SECURITY;
+
+-- AI table policies
+CREATE POLICY "Anyone can view salon embeddings" ON public.salon_embeddings
+    FOR SELECT USING (true);
+
+CREATE POLICY "Service role can manage salon embeddings" ON public.salon_embeddings
+    FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+
+CREATE POLICY "Users can view own interactions" ON public.user_interactions
+    FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "Users can insert own interactions" ON public.user_interactions
+    FOR INSERT WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Service role can manage interactions" ON public.user_interactions
+    FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+
+CREATE POLICY "Users can view own embeddings" ON public.user_embeddings
+    FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "Users can update own embeddings" ON public.user_embeddings
+    FOR UPDATE USING (user_id = auth.uid());
+
+CREATE POLICY "Service role can manage user embeddings" ON public.user_embeddings
+    FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+
+-- Triggers for AI tables
+CREATE TRIGGER handle_salon_embeddings_updated_at
+    BEFORE UPDATE ON public.salon_embeddings
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_user_embeddings_updated_at
+    BEFORE UPDATE ON public.user_embeddings
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- Migration completed successfully!
