@@ -4,10 +4,10 @@ const { asyncHandler, AppError } = require('../middleware/errorHandler');
 class UserController {
   // Update user profile
   updateProfile = asyncHandler(async (req, res) => {
-    const { first_name, last_name, phone, language } = req.body;
+    const { first_name, last_name, phone, language, role } = req.body;
 
     // Validate input
-    const allowedUpdates = ['first_name', 'last_name', 'phone', 'language'];
+    const allowedUpdates = ['first_name', 'last_name', 'phone', 'language', 'role'];
     const updates = {};
 
     Object.keys(req.body).forEach(key => {
@@ -18,6 +18,11 @@ class UserController {
 
     if (Object.keys(updates).length === 0) {
       throw new AppError('No valid fields to update', 400, 'NO_UPDATES_PROVIDED');
+    }
+
+    // Validate role if provided
+    if (updates.role && !['client', 'salon_owner'].includes(updates.role)) {
+      throw new AppError('Invalid role. Must be either "client" or "salon_owner"', 400, 'INVALID_ROLE');
     }
 
     try {
