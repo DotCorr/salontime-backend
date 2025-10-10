@@ -304,11 +304,7 @@ class SalonController {
     try {
       let query = supabase
         .from('salons')
-        .select(`
-          *,
-          services(*),
-          reviews(rating)
-        `)
+        .select('*')
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
@@ -324,25 +320,9 @@ class SalonController {
         throw new AppError('Failed to search salons', 500, 'SALON_SEARCH_FAILED');
       }
 
-      // Calculate average ratings
-      const salonsWithRatings = salons.map(salon => ({
-        ...salon,
-        average_rating: salon.reviews.length > 0
-          ? salon.reviews.reduce((sum, review) => sum + review.rating, 0) / salon.reviews.length
-          : 0,
-        total_reviews: salon.reviews.length
-      }));
-
       res.status(200).json({
         success: true,
-        data: {
-          salons: salonsWithRatings,
-          pagination: {
-            page: parseInt(page),
-            limit: parseInt(limit),
-            total: salonsWithRatings.length
-          }
-        }
+        data: salons || []
       });
 
     } catch (error) {

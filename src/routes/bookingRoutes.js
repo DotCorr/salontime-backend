@@ -8,6 +8,7 @@ router.use(authenticateToken);
 
 // Client booking routes
 router.post('/', bookingController.createBooking);
+router.get('/', bookingController.getMyBookings); // Alias for /my-bookings
 router.get('/my-bookings', bookingController.getMyBookings);
 router.get('/available-slots', bookingController.getAvailableSlots);
 router.patch('/:bookingId/status', bookingController.updateBookingStatus);
