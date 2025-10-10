@@ -250,6 +250,30 @@ class SupabaseService {
 
     return data;
   }
+
+  // Track user interactions for personalization
+  async trackUserInteraction(interactionData) {
+    const { user_id, action, salon_id, timestamp } = interactionData;
+
+    const { data, error } = await supabase
+      .from('user_interactions')
+      .insert({
+        user_id,
+        action,
+        salon_id,
+        timestamp: new Date(timestamp),
+        created_at: new Date()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error tracking user interaction:', error);
+      throw new AppError('Failed to track user interaction', 500, 'INTERACTION_TRACKING_FAILED');
+    }
+
+    return data;
+  }
 }
 
 module.exports = new SupabaseService();

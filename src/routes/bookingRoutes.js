@@ -11,6 +11,7 @@ router.post('/', bookingController.createBooking);
 router.get('/', bookingController.getMyBookings); // Alias for /my-bookings
 router.get('/my-bookings', bookingController.getMyBookings);
 router.get('/available-slots', bookingController.getAvailableSlots);
+router.get('/stats', bookingController.getBookingStats);
 router.patch('/:bookingId/status', bookingController.updateBookingStatus);
 
 // Salon owner booking routes

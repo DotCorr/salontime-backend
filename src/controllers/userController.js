@@ -137,6 +137,44 @@ class UserController {
       throw new AppError('Failed to update notification settings', 500, 'NOTIFICATION_SETTINGS_UPDATE_FAILED');
     }
   });
+
+  // Track user interactions for personalization
+  trackUserInteraction = asyncHandler(async (req, res) => {
+    const { action, salon_id, timestamp } = req.body;
+
+    // Validate input
+    if (!action || !salon_id) {
+      throw new AppError('Action and salon_id are required', 400, 'MISSING_REQUIRED_FIELDS');
+    }
+
+    const validActions = ['view', 'book', 'favorite', 'unfavorite'];
+    if (!validActions.includes(action)) {
+      throw new AppError('Invalid action. Must be one of: view, book, favorite, unfavorite', 400, 'INVALID_ACTION');
+    }
+
+    try {
+      // Store user interaction in database
+      const interaction = await supabaseService.trackUserInteraction({
+        user_id: req.user.id,
+        action,
+        salon_id,
+        timestamp: timestamp || new Date().toISOString()
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          interaction
+        }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to track user interaction', 500, 'INTERACTION_TRACKING_FAILED');
+    }
+  });
 }
 
 module.exports = new UserController();

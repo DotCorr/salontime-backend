@@ -460,6 +460,60 @@ class BookingController {
     const [hours, minutes] = timeStr.split(':').map(Number);
     return hours * 60 + minutes;
   }
+
+  // Get booking statistics for user
+  getBookingStats = asyncHandler(async (req, res) => {
+    try {
+      const userId = req.user.id;
+      
+      // Get total bookings count
+      const { data: totalBookings, error: totalError } = await supabaseService.supabaseService.supabase
+        .from('bookings')
+        .select('id', { count: 'exact' })
+        .eq('client_id', userId);
+
+      if (totalError) {
+        throw new AppError('Failed to fetch booking statistics', 500, 'BOOKING_STATS_FAILED');
+      }
+
+      // Get upcoming bookings count
+      const { data: upcomingBookings, error: upcomingError } = await supabaseService.supabaseService.supabase
+        .from('bookings')
+        .select('id', { count: 'exact' })
+        .eq('client_id', userId)
+        .gte('appointment_date', new Date().toISOString().split('T')[0]);
+
+      if (upcomingError) {
+        throw new AppError('Failed to fetch upcoming bookings', 500, 'UPCOMING_BOOKINGS_FAILED');
+      }
+
+      // Get completed bookings count
+      const { data: completedBookings, error: completedError } = await supabaseService.supabaseService.supabase
+        .from('bookings')
+        .select('id', { count: 'exact' })
+        .eq('client_id', userId)
+        .eq('status', 'completed');
+
+      if (completedError) {
+        throw new AppError('Failed to fetch completed bookings', 500, 'COMPLETED_BOOKINGS_FAILED');
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          total_bookings: totalBookings?.length || 0,
+          upcoming_bookings: upcomingBookings?.length || 0,
+          completed_bookings: completedBookings?.length || 0
+        }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to fetch booking statistics', 500, 'BOOKING_STATS_FAILED');
+    }
+  });
 }
 
 module.exports = new BookingController();
