@@ -32,6 +32,7 @@ const sampleSalons = [
       saturday: "09:00-17:00",
       sunday: "Closed"
     },
+    images: ["https://images.unsplash.com/photo-1560066984-138dadb4c035?w=500&h=300&fit=crop"],
     latitude: 52.3676,
     longitude: 4.9041
   },
@@ -59,6 +60,7 @@ const sampleSalons = [
       saturday: "09:00-18:00",
       sunday: "Closed"
     },
+    images: ["https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=500&h=300&fit=crop"],
     latitude: 51.9244,
     longitude: 4.4777
   },
@@ -145,6 +147,7 @@ function generateSampleSalons() {
       zip_code: `${Math.floor(Math.random() * 9000) + 1000} ${String.fromCharCode(65 + Math.floor(Math.random() * 26))}${String.fromCharCode(65 + Math.floor(Math.random() * 26))}`,
       phone: `+31 ${Math.floor(Math.random() * 90) + 10} ${Math.floor(Math.random() * 900) + 100} ${Math.floor(Math.random() * 9000) + 1000}`,
       email: `info@${businessType.toLowerCase().replace(/\s+/g, '')}${city.name.toLowerCase()}${i + 1}.nl`,
+      images: [`https://images.unsplash.com/photo-${1560066984 + i}?w=500&h=300&fit=crop`],
       website: `https://${businessType.toLowerCase().replace(/\s+/g, '')}${city.name.toLowerCase()}${i + 1}.nl`,
       rating_average: Math.round((Math.random() * 2 + 3) * 10) / 10, // 3.0 to 5.0
       rating_count: Math.floor(Math.random() * 200) + 10,

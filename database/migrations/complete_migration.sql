@@ -793,6 +793,8 @@ DROP TRIGGER IF EXISTS handle_conversations_updated_at ON public.conversations;
 DROP TRIGGER IF EXISTS handle_messages_updated_at ON public.messages;
 DROP TRIGGER IF EXISTS handle_chat_reports_updated_at ON public.chat_reports;
 DROP TRIGGER IF EXISTS handle_user_settings_updated_at ON public.user_settings;
+DROP TRIGGER IF EXISTS handle_salon_embeddings_updated_at ON public.salon_embeddings;
+DROP TRIGGER IF EXISTS handle_user_embeddings_updated_at ON public.user_embeddings;
 
 CREATE TRIGGER handle_user_profiles_updated_at
     BEFORE UPDATE ON public.user_profiles
@@ -836,6 +838,14 @@ CREATE TRIGGER handle_chat_reports_updated_at
 
 CREATE TRIGGER handle_user_settings_updated_at
     BEFORE UPDATE ON public.user_settings
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_salon_embeddings_updated_at
+    BEFORE UPDATE ON public.salon_embeddings
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER handle_user_embeddings_updated_at
+    BEFORE UPDATE ON public.user_embeddings
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- AI & Recommendation Tables
@@ -914,39 +924,90 @@ ALTER TABLE public.salon_embeddings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_interactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_embeddings ENABLE ROW LEVEL SECURITY;
 
--- AI table policies
-CREATE POLICY "Anyone can view salon embeddings" ON public.salon_embeddings
-    FOR SELECT USING (true);
+-- AI table policies (with IF NOT EXISTS handling)
+DO $$
+BEGIN
+    -- Salon embeddings policies
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'salon_embeddings' AND policyname = 'Anyone can view salon embeddings') THEN
+        CREATE POLICY "Anyone can view salon embeddings" ON public.salon_embeddings
+            FOR SELECT USING (true);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'salon_embeddings' AND policyname = 'Service role can manage salon embeddings') THEN
+        CREATE POLICY "Service role can manage salon embeddings" ON public.salon_embeddings
+            FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+    END IF;
+    
+    -- User interactions policies
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_interactions' AND policyname = 'Users can view own interactions') THEN
+        CREATE POLICY "Users can view own interactions" ON public.user_interactions
+            FOR SELECT USING (user_id = auth.uid());
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_interactions' AND policyname = 'Users can insert own interactions') THEN
+        CREATE POLICY "Users can insert own interactions" ON public.user_interactions
+            FOR INSERT WITH CHECK (user_id = auth.uid());
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_interactions' AND policyname = 'Service role can manage interactions') THEN
+        CREATE POLICY "Service role can manage interactions" ON public.user_interactions
+            FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+    END IF;
+    
+    -- User embeddings policies
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_embeddings' AND policyname = 'Users can view own embeddings') THEN
+        CREATE POLICY "Users can view own embeddings" ON public.user_embeddings
+            FOR SELECT USING (user_id = auth.uid());
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_embeddings' AND policyname = 'Users can update own embeddings') THEN
+        CREATE POLICY "Users can update own embeddings" ON public.user_embeddings
+            FOR UPDATE USING (user_id = auth.uid());
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_embeddings' AND policyname = 'Service role can manage user embeddings') THEN
+        CREATE POLICY "Service role can manage user embeddings" ON public.user_embeddings
+            FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+    END IF;
+END $$;
 
-CREATE POLICY "Service role can manage salon embeddings" ON public.salon_embeddings
-    FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+-- AI table triggers are now created above with the main triggers
 
-CREATE POLICY "Users can view own interactions" ON public.user_interactions
-    FOR SELECT USING (user_id = auth.uid());
+-- Favorites table
+CREATE TABLE IF NOT EXISTS public.user_favorites (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    salon_id UUID NOT NULL REFERENCES public.salons(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    UNIQUE(user_id, salon_id)
+);
 
-CREATE POLICY "Users can insert own interactions" ON public.user_interactions
-    FOR INSERT WITH CHECK (user_id = auth.uid());
+-- Indexes for favorites
+CREATE INDEX IF NOT EXISTS idx_user_favorites_user_id ON public.user_favorites(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_favorites_salon_id ON public.user_favorites(salon_id);
 
-CREATE POLICY "Service role can manage interactions" ON public.user_interactions
-    FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+-- RLS for favorites
+ALTER TABLE public.user_favorites ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own embeddings" ON public.user_embeddings
-    FOR SELECT USING (user_id = auth.uid());
-
-CREATE POLICY "Users can update own embeddings" ON public.user_embeddings
-    FOR UPDATE USING (user_id = auth.uid());
-
-CREATE POLICY "Service role can manage user embeddings" ON public.user_embeddings
-    FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
-
--- Triggers for AI tables
-CREATE TRIGGER handle_salon_embeddings_updated_at
-    BEFORE UPDATE ON public.salon_embeddings
-    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
-
-CREATE TRIGGER handle_user_embeddings_updated_at
-    BEFORE UPDATE ON public.user_embeddings
-    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+-- Favorites policies (with IF NOT EXISTS handling)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_favorites' AND policyname = 'Users can view own favorites') THEN
+        CREATE POLICY "Users can view own favorites" ON public.user_favorites
+            FOR SELECT USING (user_id = auth.uid());
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_favorites' AND policyname = 'Users can insert own favorites') THEN
+        CREATE POLICY "Users can insert own favorites" ON public.user_favorites
+            FOR INSERT WITH CHECK (user_id = auth.uid());
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_favorites' AND policyname = 'Users can delete own favorites') THEN
+        CREATE POLICY "Users can delete own favorites" ON public.user_favorites
+            FOR DELETE USING (user_id = auth.uid());
+    END IF;
+END $$;
 
 -- Migration completed successfully!
 -- All tables, columns, indexes, policies, and triggers are now in place.

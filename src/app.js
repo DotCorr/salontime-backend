@@ -22,6 +22,7 @@ const waitlistRoutes = require('./routes/waitlistRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const userSettingsRoutes = require('./routes/userSettings');
 const sampleDataRoutes = require('./routes/sampleData');
+const favoritesRoutes = require('./routes/favorites');
 
 // Validate configuration
 config.validate();
@@ -105,6 +106,7 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/sample-data', sampleDataRoutes);
+app.use('/api/favorites', favoritesRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

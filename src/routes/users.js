@@ -16,5 +16,8 @@ router.get('/dashboard', userController.getDashboard);
 router.get('/notification-settings', userController.getNotificationSettings);
 router.put('/notification-settings', userController.updateNotificationSettings);
 
+// User interactions for personalization
+router.post('/interactions', userController.trackUserInteraction);
+
 module.exports = router;
 
