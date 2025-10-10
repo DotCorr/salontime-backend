@@ -40,9 +40,10 @@ const getFavorites = asyncHandler(async (req, res) => {
 
 // Add salon to favorites
 const addFavorite = asyncHandler(async (req, res) => {
-  const { salonId } = req.body;
+  const { salon_id, salonId } = req.body;
+  const salonIdToUse = salon_id || salonId; // Support both field names
 
-  if (!salonId) {
+  if (!salonIdToUse) {
     throw new AppError('Salon ID is required', 400, 'MISSING_SALON_ID');
   }
 
@@ -51,7 +52,7 @@ const addFavorite = asyncHandler(async (req, res) => {
       .from('user_favorites')
       .insert({
         user_id: req.user.id,
-        salon_id: salonId
+        salon_id: salonIdToUse
       })
       .select()
       .single();
