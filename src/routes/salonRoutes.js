@@ -4,6 +4,8 @@ const salonController = require('../controllers/salonController');
 const { authenticateToken } = require('../middleware/auth');
 
 // Public routes
+router.get('/nearby', salonController.getNearbySalons);
+router.get('/popular', salonController.getPopularSalons);
 router.get('/search', salonController.searchSalons);
 router.get('/:salonId', salonController.getSalon);
 

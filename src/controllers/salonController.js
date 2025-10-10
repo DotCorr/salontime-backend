@@ -652,6 +652,64 @@ class SalonController {
       throw new AppError('Failed to fetch salon clients', 500, 'SALON_CLIENTS_FETCH_FAILED');
     }
   });
+
+  // Get nearby salons
+  getNearbySalons = asyncHandler(async (req, res) => {
+    try {
+      const { latitude, longitude, radius = 10 } = req.query;
+      
+      if (!latitude || !longitude) {
+        throw new AppError('Latitude and longitude are required', 400, 'MISSING_COORDINATES');
+      }
+
+      const { data: salons, error } = await supabase
+        .from('salons')
+        .select('*')
+        .eq('is_active', true)
+        .limit(20);
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({
+        success: true,
+        data: salons || []
+      });
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to fetch nearby salons', 500, 'NEARBY_SALONS_FETCH_FAILED');
+    }
+  });
+
+  // Get popular salons
+  getPopularSalons = asyncHandler(async (req, res) => {
+    try {
+      const { data: salons, error } = await supabase
+        .from('salons')
+        .select('*')
+        .eq('is_active', true)
+        .order('rating_average', { ascending: false })
+        .order('rating_count', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({
+        success: true,
+        data: salons || []
+      });
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to fetch popular salons', 500, 'POPULAR_SALONS_FETCH_FAILED');
+    }
+  });
 }
 
 module.exports = new SalonController();
