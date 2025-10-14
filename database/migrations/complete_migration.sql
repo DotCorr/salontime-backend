@@ -1011,3 +1011,4 @@ END $$;
 
 -- Migration completed successfully!
 -- All tables, columns, indexes, policies, and triggers are now in place.
+

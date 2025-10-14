@@ -197,9 +197,13 @@ class SalonController {
         throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
       }
 
+      // Add coordinates based on city
+      const { geocodeSalon } = require('../utils/geocoding');
+      const salonWithCoords = geocodeSalon(salon);
+
       res.status(200).json({
         success: true,
-        data: { salon }
+        data: { salon: salonWithCoords }
       });
 
     } catch (error) {
@@ -320,9 +324,13 @@ class SalonController {
         throw new AppError('Failed to search salons', 500, 'SALON_SEARCH_FAILED');
       }
 
+      // Add coordinates based on city
+      const { geocodeSalons } = require('../utils/geocoding');
+      const salonsWithCoords = geocodeSalons(salons || []);
+
       res.status(200).json({
         success: true,
-        data: salons || []
+        data: salonsWithCoords
       });
 
     } catch (error) {
@@ -652,9 +660,13 @@ class SalonController {
         throw error;
       }
 
+      // Add coordinates based on city
+      const { geocodeSalons } = require('../utils/geocoding');
+      const salonsWithCoords = geocodeSalons(salons || []);
+
       res.json({
         success: true,
-        data: salons || []
+        data: salonsWithCoords
       });
     } catch (error) {
       if (error instanceof AppError) {
@@ -679,9 +691,13 @@ class SalonController {
         throw error;
       }
 
+      // Add coordinates based on city
+      const { geocodeSalons } = require('../utils/geocoding');
+      const salonsWithCoords = geocodeSalons(salons || []);
+
       res.json({
         success: true,
-        data: salons || []
+        data: salonsWithCoords
       });
     } catch (error) {
       if (error instanceof AppError) {

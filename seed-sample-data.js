@@ -158,6 +158,12 @@ function generateSampleSalons() {
     const amenitySet = amenities[Math.floor(Math.random() * amenities.length)];
     const randomImage = salonImages[Math.floor(Math.random() * salonImages.length)];
     
+    // Generate random coordinates near the city center (within ~10km radius)
+    const latOffset = (Math.random() - 0.5) * 0.18; // ~10km
+    const lngOffset = (Math.random() - 0.5) * 0.18; // ~10km
+    const latitude = city.lat + latOffset;
+    const longitude = city.lng + lngOffset;
+    
     const salon = {
       owner_id: 'abd7c6ee-ead0-474f-bc24-0a2135d5405d', // Your user ID
       business_name: `${businessType} ${city.name} ${i + 1}`,
@@ -172,6 +178,8 @@ function generateSampleSalons() {
       website: `https://${businessType.toLowerCase().replace(/\s+/g, '')}${city.name.toLowerCase()}${i + 1}.nl`,
       rating_average: Math.round((Math.random() * 2 + 3) * 10) / 10, // 3.0 to 5.0
       rating_count: Math.floor(Math.random() * 200) + 10,
+      latitude: latitude,
+      longitude: longitude,
       business_hours: {
         monday: "09:00-18:00",
         tuesday: "09:00-18:00",
