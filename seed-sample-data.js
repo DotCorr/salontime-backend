@@ -32,7 +32,7 @@ const sampleSalons = [
       saturday: "09:00-17:00",
       sunday: "Closed"
     },
-    images: ["https://images.unsplash.com/photo-1560066984-138dadb4c035?w=500&h=300&fit=crop"],
+    images: ["https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&h=600&fit=crop"],
     latitude: 52.3676,
     longitude: 4.9041
   },
@@ -60,7 +60,7 @@ const sampleSalons = [
       saturday: "09:00-18:00",
       sunday: "Closed"
     },
-    images: ["https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=500&h=300&fit=crop"],
+    images: ["https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&h=600&fit=crop"],
     latitude: 51.9244,
     longitude: 4.4777
   },
@@ -88,6 +88,7 @@ const sampleSalons = [
       saturday: "09:00-17:00",
       sunday: "Closed"
     },
+    images: ["https://images.unsplash.com/photo-1562322140-8baeececf3df?w=800&h=600&fit=crop"],
     latitude: 52.0907,
     longitude: 5.1214
   }
@@ -129,6 +130,25 @@ function generateSampleSalons() {
     ["Parking", "Wheelchair Accessible", "Refreshments"]
   ];
 
+  // Real Unsplash images for hair salons and beauty parlors
+  const salonImages = [
+    "https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&h=600&fit=crop", // Hair salon interior
+    "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&h=600&fit=crop", // Salon chairs
+    "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=800&h=600&fit=crop", // Modern salon
+    "https://images.unsplash.com/photo-1633681926022-84c23e8cb2d6?w=800&h=600&fit=crop", // Salon styling area
+    "https://images.unsplash.com/photo-1605497788044-5a32c7078486?w=800&h=600&fit=crop", // Beauty salon
+    "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=800&h=600&fit=crop", // Hair washing station
+    "https://images.unsplash.com/photo-1600948836101-f9ffda59d250?w=800&h=600&fit=crop", // Salon mirror area
+    "https://images.unsplash.com/photo-1587825140708-dfaf72ae4b04?w=800&h=600&fit=crop", // Barber shop
+    "https://images.unsplash.com/photo-1620331311520-246422fd82f9?w=800&h=600&fit=crop", // Salon workspace
+    "https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?w=800&h=600&fit=crop", // Beauty parlor
+    "https://images.unsplash.com/photo-1559599101-f09722fb4948?w=800&h=600&fit=crop", // Hairdressing salon
+    "https://images.unsplash.com/photo-1516975080664-ed2fc6a32937?w=800&h=600&fit=crop", // Hair salon tools
+    "https://images.unsplash.com/photo-1492106087820-71f1a00d2b11?w=800&h=600&fit=crop", // Salon styling station
+    "https://images.unsplash.com/photo-1582095133179-bfd08e2fc6b3?w=800&h=600&fit=crop", // Modern beauty salon
+    "https://images.unsplash.com/photo-1634449571010-02389ed0f9b0?w=800&h=600&fit=crop"  // Salon interior design
+  ];
+
   const salons = [];
   
   for (let i = 0; i < 1000; i++) {
@@ -136,6 +156,7 @@ function generateSampleSalons() {
     const businessType = businessTypes[Math.floor(Math.random() * businessTypes.length)];
     const serviceSet = services[Math.floor(Math.random() * services.length)];
     const amenitySet = amenities[Math.floor(Math.random() * amenities.length)];
+    const randomImage = salonImages[Math.floor(Math.random() * salonImages.length)];
     
     const salon = {
       owner_id: 'abd7c6ee-ead0-474f-bc24-0a2135d5405d', // Your user ID
@@ -147,7 +168,7 @@ function generateSampleSalons() {
       zip_code: `${Math.floor(Math.random() * 9000) + 1000} ${String.fromCharCode(65 + Math.floor(Math.random() * 26))}${String.fromCharCode(65 + Math.floor(Math.random() * 26))}`,
       phone: `+31 ${Math.floor(Math.random() * 90) + 10} ${Math.floor(Math.random() * 900) + 100} ${Math.floor(Math.random() * 9000) + 1000}`,
       email: `info@${businessType.toLowerCase().replace(/\s+/g, '')}${city.name.toLowerCase()}${i + 1}.nl`,
-      images: [`https://images.unsplash.com/photo-${1560066984 + i}?w=500&h=300&fit=crop`],
+      images: [randomImage],
       website: `https://${businessType.toLowerCase().replace(/\s+/g, '')}${city.name.toLowerCase()}${i + 1}.nl`,
       rating_average: Math.round((Math.random() * 2 + 3) * 10) / 10, // 3.0 to 5.0
       rating_count: Math.floor(Math.random() * 200) + 10,
@@ -235,3 +256,4 @@ if (command === 'seed') {
   console.log('  node seed-sample-data.js seed  - Add 1000 sample salons');
   console.log('  node seed-sample-data.js clear - Remove all salons');
 }
+
