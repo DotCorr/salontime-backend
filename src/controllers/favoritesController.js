@@ -1,10 +1,10 @@
-const supabaseService = require('../services/supabaseService');
+const { supabaseAdmin } = require('../config/database');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 
 // Get user's favorite salons
 const getFavorites = asyncHandler(async (req, res) => {
   try {
-    const { data: favorites, error } = await supabaseService.supabase
+    const { data: favorites, error } = await supabaseAdmin
       .from('user_favorites')
       .select(`
         *,
@@ -23,14 +23,30 @@ const getFavorites = asyncHandler(async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      throw new AppError('Failed to fetch favorites', 500, 'FAVORITES_FETCH_FAILED');
+      console.error('Supabase error fetching favorites:', error);
+      throw new AppError(`Failed to fetch favorites: ${error.message}`, 500, 'FAVORITES_FETCH_FAILED');
     }
+
+    // Add coordinates to favorite salons
+    const { geocodeSalons } = require('../utils/geocoding');
+    const favoritesWithCoords = (favorites || []).map(fav => {
+      if (fav.salons) {
+        const salonArray = Array.isArray(fav.salons) ? fav.salons : [fav.salons];
+        const geocodedSalons = geocodeSalons(salonArray);
+        return {
+          ...fav,
+          salons: geocodedSalons[0] || fav.salons
+        };
+      }
+      return fav;
+    });
 
     res.status(200).json({
       success: true,
-      data: favorites || []
+      data: favoritesWithCoords
     });
   } catch (error) {
+    console.error('Error in getFavorites:', error);
     if (error instanceof AppError) {
       throw error;
     }
@@ -48,7 +64,9 @@ const addFavorite = asyncHandler(async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabaseService.supabase
+    console.log('Adding favorite:', { user_id: req.user.id, salon_id: salonIdToUse });
+    
+    const { data, error } = await supabaseAdmin
       .from('user_favorites')
       .insert({
         user_id: req.user.id,
@@ -58,10 +76,11 @@ const addFavorite = asyncHandler(async (req, res) => {
       .single();
 
     if (error) {
+      console.error('Supabase error adding favorite:', error);
       if (error.code === '23505') { // Unique constraint violation
         throw new AppError('Salon is already in favorites', 409, 'ALREADY_FAVORITE');
       }
-      throw new AppError('Failed to add favorite', 500, 'FAVORITE_ADD_FAILED');
+      throw new AppError(`Failed to add favorite: ${error.message}`, 500, 'FAVORITE_ADD_FAILED');
     }
 
     res.status(201).json({
@@ -69,6 +88,7 @@ const addFavorite = asyncHandler(async (req, res) => {
       data: data
     });
   } catch (error) {
+    console.error('Error in addFavorite:', error);
     if (error instanceof AppError) {
       throw error;
     }
@@ -85,13 +105,14 @@ const removeFavorite = asyncHandler(async (req, res) => {
   }
 
   try {
-    const { error } = await supabaseService.supabase
+    const { error } = await supabaseAdmin
       .from('user_favorites')
       .delete()
       .eq('user_id', req.user.id)
       .eq('salon_id', salonId);
 
     if (error) {
+      console.error('Supabase error removing favorite:', error);
       throw new AppError('Failed to remove favorite', 500, 'FAVORITE_REMOVE_FAILED');
     }
 
@@ -100,6 +121,7 @@ const removeFavorite = asyncHandler(async (req, res) => {
       message: 'Favorite removed successfully'
     });
   } catch (error) {
+    console.error('Error in removeFavorite:', error);
     if (error instanceof AppError) {
       throw error;
     }
@@ -116,7 +138,7 @@ const checkFavorite = asyncHandler(async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabaseService.supabase
+    const { data, error } = await supabaseAdmin
       .from('user_favorites')
       .select('id')
       .eq('user_id', req.user.id)
@@ -124,6 +146,7 @@ const checkFavorite = asyncHandler(async (req, res) => {
       .single();
 
     if (error && error.code !== 'PGRST116') { // Not found error
+      console.error('Supabase error checking favorite:', error);
       throw new AppError('Failed to check favorite status', 500, 'FAVORITE_CHECK_FAILED');
     }
 
@@ -147,3 +170,4 @@ module.exports = {
   removeFavorite,
   checkFavorite
 };
+
