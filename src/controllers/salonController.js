@@ -203,7 +203,7 @@ class SalonController {
 
       res.status(200).json({
         success: true,
-        data: { salon: salonWithCoords }
+        data: salonWithCoords  // Return salon data directly, not wrapped in { salon: ... }
       });
 
     } catch (error) {

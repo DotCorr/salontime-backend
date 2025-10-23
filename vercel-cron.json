@@ -1,0 +1,17 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/update-trending-scores",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/update-featured-status",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-old-views",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
+

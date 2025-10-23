@@ -12,5 +12,9 @@ router.get('/status', subscriptionController.getSubscriptionStatus);
 router.post('/cancel', subscriptionController.cancelSubscription);
 router.post('/billing-portal', subscriptionController.createBillingPortal);
 
+// Featured salon status
+router.get('/featured-status', subscriptionController.getFeaturedStatus);
+router.post('/upgrade-to-featured', subscriptionController.upgradeToFeatured);
+
 module.exports = router;
 

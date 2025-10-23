@@ -293,6 +293,174 @@ class SubscriptionController {
       throw new AppError('Failed to check subscription access', 500, 'SUBSCRIPTION_CHECK_FAILED');
     }
   });
+
+  // Get featured status for salon owner
+  getFeaturedStatus = asyncHandler(async (req, res) => {
+    try {
+      const { data: salon, error } = await supabase
+        .from('salons')
+        .select(`
+          id,
+          business_name,
+          subscription_plan,
+          subscription_status,
+          is_featured,
+          featured_until,
+          trending_score,
+          view_count,
+          booking_count,
+          favorite_count
+        `)
+        .eq('owner_id', req.user.id)
+        .single();
+
+      if (error || !salon) {
+        throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
+      }
+
+      const now = new Date();
+      const isFeatured = salon.is_featured && 
+                        (!salon.featured_until || new Date(salon.featured_until) > now);
+
+      const canBeFeatured = ['premium', 'professional', 'enterprise'].includes(salon.subscription_plan) &&
+                           salon.subscription_status === 'active';
+
+      res.status(200).json({
+        success: true,
+        data: {
+          salon_id: salon.id,
+          business_name: salon.business_name,
+          is_featured: isFeatured,
+          featured_until: salon.featured_until,
+          can_be_featured: canBeFeatured,
+          subscription_plan: salon.subscription_plan,
+          subscription_status: salon.subscription_status,
+          analytics: {
+            trending_score: salon.trending_score,
+            view_count: salon.view_count,
+            booking_count: salon.booking_count,
+            favorite_count: salon.favorite_count,
+          },
+          upgrade_info: {
+            required_plan: 'premium',
+            benefits: [
+              'Featured placement in app',
+              'Priority in search results',
+              'Badge on salon profile',
+              'Increased visibility',
+              '3x more client views on average'
+            ]
+          }
+        }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to get featured status', 500, 'FEATURED_STATUS_FAILED');
+    }
+  });
+
+  // Upgrade to featured (premium subscription)
+  upgradeToFeatured = asyncHandler(async (req, res) => {
+    try {
+      const { data: salon, error: salonError } = await supabase
+        .from('salons')
+        .select('*')
+        .eq('owner_id', req.user.id)
+        .single();
+
+      if (salonError || !salon) {
+        throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
+      }
+
+      // Check if already subscribed to premium
+      if (['premium', 'professional', 'enterprise'].includes(salon.subscription_plan) &&
+          salon.subscription_status === 'active') {
+        // Just enable featured if not already
+        if (!salon.is_featured) {
+          await supabase
+            .from('salons')
+            .update({
+              is_featured: true,
+              featured_until: salon.subscription_ends_at
+            })
+            .eq('id', salon.id);
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: 'Your salon is now featured!',
+          data: {
+            is_featured: true,
+            featured_until: salon.subscription_ends_at
+          }
+        });
+      }
+
+      // Create Stripe checkout session for premium subscription
+      const stripe_service = require('../services/stripeService');
+      
+      // Create customer if doesn't exist
+      let customerId = salon.stripe_customer_id;
+      if (!customerId) {
+        const customer = await stripe_service.createCustomer({
+          email: req.user.email,
+          name: salon.business_name,
+          user_id: req.user.id
+        });
+        customerId = customer.id;
+
+        await supabase
+          .from('salons')
+          .update({ stripe_customer_id: customerId })
+          .eq('id', salon.id);
+      }
+
+      // Get premium price ID from environment
+      const premiumPriceId = process.env.STRIPE_PREMIUM_PRICE_ID || config.stripe.premium_price_id;
+      if (!premiumPriceId) {
+        throw new AppError('Premium plan not configured', 500, 'PREMIUM_PLAN_NOT_CONFIGURED');
+      }
+
+      // Create checkout session
+      const returnUrl = `${config.frontend.url}/salon-owner/settings`;
+      const session = await stripe_service.stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: 'subscription',
+        payment_method_types: ['card', 'ideal'],
+        line_items: [
+          {
+            price: premiumPriceId,
+            quantity: 1,
+          },
+        ],
+        success_url: `${returnUrl}?featured=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${returnUrl}?featured=cancelled`,
+        metadata: {
+          salon_id: salon.id,
+          user_id: req.user.id,
+          upgrade_type: 'featured'
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          checkout_url: session.url,
+          session_id: session.id
+        }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      console.error('Upgrade to featured error:', error);
+      throw new AppError('Failed to create upgrade session', 500, 'UPGRADE_FAILED');
+    }
+  });
 }
 
 module.exports = new SubscriptionController();
