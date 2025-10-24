@@ -129,8 +129,9 @@ class SalonController {
           }]);
 
         // Generate onboarding link for immediate setup
-        const returnUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/salon/dashboard?stripe_setup=success`;
-        const refreshUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/salon/dashboard?stripe_setup=refresh`;
+        // Redirect to web app root - it will route salon owners to their dashboard
+        const returnUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}`;
+        const refreshUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}`;
         
         const accountLink = await stripeService.createAccountLink(
           stripeAccount.id,
@@ -456,8 +457,10 @@ class SalonController {
         throw new AppError('Stripe account not found for this salon', 404, 'STRIPE_ACCOUNT_NOT_FOUND');
       }
 
-      const returnUrl = `${process.env.FRONTEND_URL}/salon-owner/stripe/return`;
-      const refreshUrl = `${process.env.FRONTEND_URL}/salon-owner/stripe/refresh`;
+      // Redirect to web app after Stripe onboarding
+      // The web app will automatically route salon owners to their dashboard
+      const returnUrl = `${process.env.FRONTEND_URL}`;
+      const refreshUrl = `${process.env.FRONTEND_URL}`;
 
       const accountLink = await stripeService.createAccountLink(
         salon.stripe_account_id,
