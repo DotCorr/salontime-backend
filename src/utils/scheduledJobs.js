@@ -38,7 +38,7 @@ const cleanupOldViewsJob = cron.schedule('0 2 * * *', async () => {
   console.log(`🧹 [${new Date().toISOString()}] Starting old views cleanup...`);
   
   try {
-    const { supabase } = require('../config/supabase');
+    const { supabase } = require('../config/database');
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     
@@ -66,7 +66,7 @@ const updateFeaturedStatusJob = cron.schedule('0 1 * * *', async () => {
   console.log(`⭐ [${new Date().toISOString()}] Starting featured status update...`);
   
   try {
-    const { supabase } = require('../config/supabase');
+    const { supabase } = require('../config/database');
     const now = new Date().toISOString();
     
     // Remove featured flag from expired subscriptions

@@ -223,7 +223,7 @@ async function getSalonAnalytics(req, res) {
 
     // Check if user owns this salon
     if (req.user.role === 'salon_owner') {
-      const { supabase } = require('../config/supabase');
+      const { supabase } = require('../config/database');
       const { data: salon } = await supabase
         .from('salons')
         .select('owner_id')

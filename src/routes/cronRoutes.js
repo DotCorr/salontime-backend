@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const analyticsService = require('../services/analyticsService');
-const { supabase } = require('../config/supabase');
+const { supabase } = require('../config/database');
 
 /**
  * Cron job routes for Vercel scheduled functions
