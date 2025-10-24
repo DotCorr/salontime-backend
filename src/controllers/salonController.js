@@ -12,6 +12,7 @@ class SalonController {
       city,
       state,
       zip_code,
+      country,
       phone,
       email,
       business_hours
@@ -68,6 +69,7 @@ class SalonController {
           city,
           state,
           zip_code,
+          country: country || 'US',
           phone,
           email,
           business_hours
@@ -103,7 +105,7 @@ class SalonController {
           salon_id: salon.id,
           owner_id: req.user.id,
           email: email || userProfile?.email,
-          country: address?.country || 'US',
+          country: salon.country || 'US',
           business_type: req.body.business_type || 'individual'
         });
 
@@ -355,7 +357,7 @@ class SalonController {
         throw new AppError('Salon not found. Create a salon profile first.', 404, 'SALON_NOT_FOUND');
       }
 
-      if (!salon.address?.country) {
+      if (!salon.country) {
         throw new AppError('Country is required for Stripe account creation. Please update your salon address.', 400, 'MISSING_COUNTRY');
       }
 
@@ -369,7 +371,7 @@ class SalonController {
         business_name: salon.business_name,
         salon_id: salon.id,
         owner_id: req.user.id,
-        country: salon.address?.country
+        country: salon.country
       });
 
       // Update salon with Stripe account ID
