@@ -735,7 +735,7 @@ class SalonController {
       console.log('✅ Salon exists and is active:', salonId);
 
       // Get all active services for this salon
-      const { data: services, error } = await supabase
+      const { data: services, error } = await supabaseAdmin
         .from('services')
         .select('*')
         .eq('salon_id', salonId)
