@@ -8,6 +8,7 @@ router.get('/nearby', salonController.getNearbySalons);
 router.get('/popular', salonController.getPopularSalons);
 router.get('/search', salonController.searchSalons);
 router.get('/:salonId', salonController.getSalon);
+router.get('/:salonId/services', salonController.getSalonServices);
 
 // Protected routes (require authentication)
 router.use(authenticateToken);

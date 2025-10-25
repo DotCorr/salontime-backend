@@ -711,6 +711,56 @@ class SalonController {
       throw new AppError('Failed to fetch popular salons', 500, 'POPULAR_SALONS_FETCH_FAILED');
     }
   });
+
+  // Get services for a specific salon (public endpoint)
+  getSalonServices = asyncHandler(async (req, res) => {
+    const { salonId } = req.params;
+
+    try {
+      // First check if salon exists and is active
+      const { data: salon, error: salonError } = await supabase
+        .from('salons')
+        .select('id, is_active')
+        .eq('id', salonId)
+        .single();
+
+      if (salonError || !salon) {
+        throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
+      }
+
+      if (!salon.is_active) {
+        throw new AppError('Salon is not active', 403, 'SALON_NOT_ACTIVE');
+      }
+
+      // Get all active services for this salon
+      const { data: services, error } = await supabase
+        .from('services')
+        .select(`
+          *,
+          category:service_categories(*)
+        `)
+        .eq('salon_id', salonId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching salon services:', error);
+        throw new AppError('Failed to fetch services', 500, 'SERVICES_FETCH_FAILED');
+      }
+
+      res.status(200).json({
+        success: true,
+        data: services || []
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      console.error('Get salon services error:', error);
+      throw new AppError('Failed to fetch salon services', 500, 'SERVICES_FETCH_FAILED');
+    }
+  });
 }
 
 module.exports = new SalonController();
