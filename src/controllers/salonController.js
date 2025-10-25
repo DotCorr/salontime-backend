@@ -187,11 +187,7 @@ class SalonController {
     try {
       const { data: salon, error } = await supabase
         .from('salons')
-        .select(`
-          *,
-          services(*),
-          staff(*)
-        `)
+        .select('*')
         .eq('id', salonId)
         .eq('is_active', true)
         .single();
@@ -741,10 +737,7 @@ class SalonController {
       // Get all active services for this salon
       const { data: services, error } = await supabase
         .from('services')
-        .select(`
-          *,
-          category:service_categories(*)
-        `)
+        .select('*')
         .eq('salon_id', salonId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
