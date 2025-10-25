@@ -716,6 +716,8 @@ class SalonController {
   getSalonServices = asyncHandler(async (req, res) => {
     const { salonId } = req.params;
 
+    console.log('🔍 Getting services for salon:', salonId);
+
     try {
       // First check if salon exists and is active
       const { data: salon, error: salonError } = await supabase
@@ -725,12 +727,16 @@ class SalonController {
         .single();
 
       if (salonError || !salon) {
+        console.log('❌ Salon not found:', salonId, salonError);
         throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
       }
 
       if (!salon.is_active) {
+        console.log('❌ Salon not active:', salonId);
         throw new AppError('Salon is not active', 403, 'SALON_NOT_ACTIVE');
       }
+
+      console.log('✅ Salon exists and is active:', salonId);
 
       // Get all active services for this salon
       const { data: services, error } = await supabase
@@ -744,9 +750,11 @@ class SalonController {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching salon services:', error);
+        console.error('❌ Error fetching salon services:', error);
         throw new AppError('Failed to fetch services', 500, 'SERVICES_FETCH_FAILED');
       }
+
+      console.log('✅ Found services for salon', salonId, ':', services?.length || 0);
 
       res.status(200).json({
         success: true,
@@ -754,10 +762,10 @@ class SalonController {
       });
 
     } catch (error) {
+      console.error('❌ Get salon services error:', error);
       if (error instanceof AppError) {
         throw error;
       }
-      console.error('Get salon services error:', error);
       throw new AppError('Failed to fetch salon services', 500, 'SERVICES_FETCH_FAILED');
     }
   });
