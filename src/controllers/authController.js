@@ -64,6 +64,11 @@ class AuthController {
       let userProfile;
       try {
         userProfile = await supabaseService.getUserProfile(user.id);
+        
+        // Enforce role separation - user_type in request must match profile user_type
+        if (userProfile.user_type !== user_type) {
+          throw new AppError(`Access denied. You are registered as a ${userProfile.user_type}, not a ${user_type}.`, 403, 'ROLE_MISMATCH');
+        }
       } catch (error) {
         if (error.code === 'PROFILE_NOT_FOUND') {
           // Create new user profile
@@ -239,8 +244,10 @@ class AuthController {
       // Get user profile
       const userProfile = await supabaseService.getUserProfile(authData.user.id);
 
-      // Note: Removed user type verification to allow role switching
-      // Users can now login with any role and switch between client/salon_owner
+      // Enforce role separation - user_type in request must match profile user_type
+      if (userProfile.user_type !== user_type) {
+        throw new AppError(`Access denied. You are registered as a ${userProfile.user_type}, not a ${user_type}.`, 403, 'ROLE_MISMATCH');
+      }
 
       res.status(200).json({
         success: true,
