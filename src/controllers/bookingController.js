@@ -384,10 +384,29 @@ class BookingController {
       const { data: existingBookings } = await bookingsQuery;
 
       // Calculate available slots
-      const dayOfWeek = new Date(date).toLocaleLowerCase();
+      // Get day name (monday, tuesday, etc.) from date string
+      const dateObj = new Date(date);
+      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const dayOfWeek = days[dateObj.getDay()];
       const businessHours = salon.business_hours?.[dayOfWeek];
 
-      if (!businessHours) {
+      if (!businessHours || businessHours.closed === true || businessHours.closed === 'true') {
+        return res.status(200).json({
+          success: true,
+          data: { available_slots: [] }
+        });
+      }
+
+      // Handle both formats: {open: "09:00", close: "18:00"} or "09:00-18:00"
+      let openTime, closeTime;
+      if (typeof businessHours === 'string') {
+        [openTime, closeTime] = businessHours.split('-');
+      } else {
+        openTime = businessHours.open || businessHours.opening;
+        closeTime = businessHours.close || businessHours.closing;
+      }
+
+      if (!openTime || !closeTime) {
         return res.status(200).json({
           success: true,
           data: { available_slots: [] }
@@ -395,8 +414,8 @@ class BookingController {
       }
 
       const slots = this._calculateAvailableSlots(
-        businessHours.open,
-        businessHours.close,
+        openTime,
+        closeTime,
         service.duration,
         existingBookings || []
       );
@@ -460,6 +479,120 @@ class BookingController {
     const [hours, minutes] = timeStr.split(':').map(Number);
     return hours * 60 + minutes;
   }
+
+  // Get available slots count for multiple dates (for calendar heat map)
+  getAvailableSlotsCount = asyncHandler(async (req, res) => {
+    const { salon_id, service_id, start_date, end_date, staff_id } = req.query;
+
+    if (!salon_id || !service_id || !start_date || !end_date) {
+      throw new AppError('Missing required parameters', 400, 'MISSING_PARAMETERS');
+    }
+
+    try {
+      // Get service duration
+      const { data: service, error: serviceError } = await supabaseService.supabaseService.supabase
+        .from('services')
+        .select('duration')
+        .eq('id', service_id)
+        .single();
+
+      if (serviceError || !service) {
+        throw new AppError('Service not found', 404, 'SERVICE_NOT_FOUND');
+      }
+
+      // Get salon business hours
+      const { data: salon, error: salonError } = await supabaseService.supabase
+        .from('salons')
+        .select('business_hours')
+        .eq('id', salon_id)
+        .single();
+
+      if (salonError || !salon) {
+        throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
+      }
+
+      // Get all bookings in date range
+      let bookingsQuery = supabaseService.supabase
+        .from('bookings')
+        .select('appointment_date, start_time, end_time')
+        .eq('salon_id', salon_id)
+        .gte('appointment_date', start_date)
+        .lte('appointment_date', end_date)
+        .neq('status', 'cancelled');
+
+      if (staff_id) {
+        bookingsQuery = bookingsQuery.eq('staff_id', staff_id);
+      }
+
+      const { data: allBookings } = await bookingsQuery;
+      
+      // Group bookings by date
+      const bookingsByDate = {};
+      if (allBookings) {
+        allBookings.forEach(booking => {
+          if (!bookingsByDate[booking.appointment_date]) {
+            bookingsByDate[booking.appointment_date] = [];
+          }
+          bookingsByDate[booking.appointment_date].push({
+            start_time: booking.start_time,
+            end_time: booking.end_time
+          });
+        });
+      }
+
+      // Calculate slots count for each date
+      const slotsCountByDate = {};
+      const start = new Date(start_date);
+      const end = new Date(end_date);
+      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
+        const dayOfWeek = days[d.getDay()];
+        const businessHours = salon.business_hours?.[dayOfWeek];
+
+        if (!businessHours || businessHours.closed === true || businessHours.closed === 'true') {
+          slotsCountByDate[dateStr] = 0;
+          continue;
+        }
+
+        // Handle both formats
+        let openTime, closeTime;
+        if (typeof businessHours === 'string') {
+          [openTime, closeTime] = businessHours.split('-');
+        } else {
+          openTime = businessHours.open || businessHours.opening;
+          closeTime = businessHours.close || businessHours.closing;
+        }
+
+        if (!openTime || !closeTime) {
+          slotsCountByDate[dateStr] = 0;
+          continue;
+        }
+
+        const existingBookings = bookingsByDate[dateStr] || [];
+        const slots = this._calculateAvailableSlots(
+          openTime,
+          closeTime,
+          service.duration,
+          existingBookings
+        );
+
+        slotsCountByDate[dateStr] = slots.length;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: { slots_count_by_date: slotsCountByDate }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to get available slots count', 500, 'SLOTS_COUNT_FETCH_FAILED');
+    }
+  });
 
   // Get booking statistics for user
   getBookingStats = asyncHandler(async (req, res) => {
