@@ -1,6 +1,7 @@
 const supabaseService = require('../services/supabaseService');
 const emailService = require('../services/emailService');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
+const { supabase } = require('../config/database');
 
 class BookingController {
   // Create new booking
@@ -22,7 +23,7 @@ class BookingController {
 
     try {
       // Get service details
-      const { data: service, error: serviceError } = await supabaseService.supabaseService.supabase
+      const { data: service, error: serviceError } = await supabase
         .from('services')
         .select('*, salons(*)')
         .eq('id', service_id)
@@ -38,7 +39,7 @@ class BookingController {
       const endTimeStr = endTime.toTimeString().split(' ')[0].slice(0, 5);
 
       // Check for conflicts
-      const { data: conflicts } = await supabaseService.supabase
+      const { data: conflicts } = await supabase
         .from('bookings')
         .select('id')
         .eq('salon_id', salon_id)
@@ -54,7 +55,7 @@ class BookingController {
       // Determine client ID (could be family member)
       let clientId = req.user.id;
       if (family_member_id) {
-        const { data: familyMember } = await supabaseService.supabase
+        const { data: familyMember } = await supabase
           .from('family_members')
           .select('id')
           .eq('id', family_member_id)
@@ -67,7 +68,7 @@ class BookingController {
       }
 
       // Create booking
-      const { data: booking, error: bookingError } = await supabaseService.supabase
+      const { data: booking, error: bookingError } = await supabase
         .from('bookings')
         .insert([{
           client_id: clientId,
@@ -94,7 +95,7 @@ class BookingController {
       }
 
       // Send confirmation email
-      const { data: client } = await supabaseService.supabase
+      const { data: client } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', clientId)
@@ -187,7 +188,7 @@ class BookingController {
 
     try {
       // Get user's salon
-      const { data: salon, error: salonError } = await supabaseService.supabase
+      const { data: salon, error: salonError } = await supabase
         .from('salons')
         .select('id')
         .eq('owner_id', req.user.id)
@@ -256,7 +257,7 @@ class BookingController {
 
     try {
       // Check if user owns the salon or is the client
-      const { data: booking, error: bookingError } = await supabaseService.supabase
+      const { data: booking, error: bookingError } = await supabase
         .from('bookings')
         .select(`
           *,
@@ -290,7 +291,7 @@ class BookingController {
         updateData.staff_notes = staff_notes;
       }
 
-      const { data: updatedBooking, error: updateError } = await supabaseService.supabase
+      const { data: updatedBooking, error: updateError } = await supabase
         .from('bookings')
         .update(updateData)
         .eq('id', bookingId)
@@ -348,7 +349,7 @@ class BookingController {
 
     try {
       // Get service duration
-      const { data: service, error: serviceError } = await supabaseService.supabaseService.supabase
+      const { data: service, error: serviceError } = await supabase
         .from('services')
         .select('duration')
         .eq('id', service_id)
@@ -359,7 +360,7 @@ class BookingController {
       }
 
       // Get salon business hours
-      const { data: salon, error: salonError } = await supabaseService.supabase
+      const { data: salon, error: salonError } = await supabase
         .from('salons')
         .select('business_hours')
         .eq('id', salon_id)
@@ -490,7 +491,7 @@ class BookingController {
 
     try {
       // Get service duration
-      const { data: service, error: serviceError } = await supabaseService.supabaseService.supabase
+      const { data: service, error: serviceError } = await supabase
         .from('services')
         .select('duration')
         .eq('id', service_id)
@@ -501,7 +502,7 @@ class BookingController {
       }
 
       // Get salon business hours
-      const { data: salon, error: salonError } = await supabaseService.supabase
+      const { data: salon, error: salonError } = await supabase
         .from('salons')
         .select('business_hours')
         .eq('id', salon_id)
@@ -512,7 +513,7 @@ class BookingController {
       }
 
       // Get all bookings in date range
-      let bookingsQuery = supabaseService.supabase
+      let bookingsQuery = supabase
         .from('bookings')
         .select('appointment_date, start_time, end_time')
         .eq('salon_id', salon_id)
@@ -600,7 +601,7 @@ class BookingController {
       const userId = req.user.id;
       
       // Get total bookings count
-      const { count: totalBookingsCount, error: totalError } = await supabaseService.supabase
+      const { count: totalBookingsCount, error: totalError } = await supabase
         .from('bookings')
         .select('*', { count: 'exact', head: true })
         .eq('client_id', userId);
@@ -610,7 +611,7 @@ class BookingController {
       }
 
       // Get upcoming bookings count
-      const { count: upcomingBookingsCount, error: upcomingError } = await supabaseService.supabase
+      const { count: upcomingBookingsCount, error: upcomingError } = await supabase
         .from('bookings')
         .select('*', { count: 'exact', head: true })
         .eq('client_id', userId)
@@ -621,7 +622,7 @@ class BookingController {
       }
 
       // Get completed bookings count
-      const { count: completedBookingsCount, error: completedError } = await supabaseService.supabase
+      const { count: completedBookingsCount, error: completedError } = await supabase
         .from('bookings')
         .select('*', { count: 'exact', head: true })
         .eq('client_id', userId)
@@ -632,7 +633,7 @@ class BookingController {
       }
 
       // Get favorites count
-      const { count: favoritesCount, error: favoritesError } = await supabaseService.supabase
+      const { count: favoritesCount, error: favoritesError } = await supabase
         .from('user_favorites')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId);
