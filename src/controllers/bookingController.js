@@ -13,7 +13,8 @@ class BookingController {
       appointment_date,
       start_time,
       client_notes,
-      family_member_id
+      family_member_id,
+      payment_intent_id
     } = req.body;
 
     // Validate required fields
@@ -126,6 +127,40 @@ class BookingController {
       }
 
       console.log('✅ Booking created successfully:', booking?.id);
+
+      // Create pending payment record linked to booking
+      let paymentRecord = null;
+      try {
+        const paymentData = {
+          booking_id: booking.id,
+          amount: service.price,
+          currency: service.currency || 'EUR',
+          status: 'pending'
+        };
+
+        // Link payment intent if provided
+        if (payment_intent_id) {
+          paymentData.stripe_payment_intent_id = payment_intent_id;
+        }
+
+        const { data: payment, error: paymentError } = await supabase
+          .from('payments')
+          .insert([paymentData])
+          .select()
+          .single();
+
+        if (paymentError) {
+          console.warn('⚠️ Could not create payment record (non-critical):', paymentError.message);
+          // Don't fail booking creation if payment record fails
+        } else {
+          paymentRecord = payment;
+        }
+      } catch (paymentErr) {
+        console.warn('⚠️ Payment record creation skipped:', paymentErr.message);
+      }
+
+      // If payment intent was provided but payment record creation failed, try to link via webhook later
+      // The webhook handler will catch payment_intent.succeeded and link it to the booking
 
       // Send confirmation email
       const { data: client } = await supabase
@@ -278,6 +313,105 @@ class BookingController {
     }
   });
 
+  // Reschedule booking (client can change date/time)
+  rescheduleBooking = asyncHandler(async (req, res) => {
+    const { bookingId } = req.params;
+    const { appointment_date, start_time } = req.body;
+
+    if (!appointment_date || !start_time) {
+      throw new AppError('Missing required fields: appointment_date, start_time', 400, 'MISSING_FIELDS');
+    }
+
+    try {
+      // Get booking
+      const { data: booking, error: bookingError } = await supabase
+        .from('bookings')
+        .select(`
+          *,
+          salons(owner_id),
+          services(*)
+        `)
+        .eq('id', bookingId)
+        .single();
+
+      if (bookingError || !booking) {
+        throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
+      }
+
+      // Only client can reschedule their own booking
+      if (booking.client_id !== req.user.id) {
+        throw new AppError('Only the client can reschedule this booking', 403, 'INSUFFICIENT_PERMISSIONS');
+      }
+
+      // Can only reschedule pending or confirmed bookings
+      if (!['pending', 'confirmed'].includes(booking.status)) {
+        throw new AppError('Can only reschedule pending or confirmed bookings', 400, 'INVALID_STATUS');
+      }
+
+      // Calculate new end time
+      const startTime = new Date(`${appointment_date}T${start_time}`);
+      const endTime = new Date(startTime.getTime() + booking.services.duration * 60000);
+      const endTimeStr = endTime.toTimeString().split(' ')[0].slice(0, 5);
+
+      // Check for conflicts at new time
+      const { data: conflicts } = await supabase
+        .from('bookings')
+        .select('id')
+        .eq('salon_id', booking.salon_id)
+        .eq('appointment_date', appointment_date)
+        .neq('status', 'cancelled')
+        .neq('id', bookingId) // Exclude current booking
+        .or(`start_time.lte.${start_time},end_time.gte.${endTimeStr}`)
+        .or(`start_time.lt.${endTimeStr},end_time.gt.${start_time}`);
+
+      if (conflicts && conflicts.length > 0) {
+        throw new AppError('Time slot not available', 409, 'TIME_SLOT_CONFLICT');
+      }
+
+      // Update booking
+      const { data: updatedBooking, error: updateError } = await supabase
+        .from('bookings')
+        .update({
+          appointment_date,
+          start_time,
+          end_time: endTimeStr,
+          status: 'pending' // Reset to pending for salon to reconfirm
+        })
+        .eq('id', bookingId)
+        .select(`
+          *,
+          services(*),
+          salons(*),
+          user_profiles!client_id(*)
+        `)
+        .single();
+
+      if (updateError) {
+        throw new AppError('Failed to reschedule booking', 500, 'RESCHEDULE_FAILED');
+      }
+
+      // Send notification email
+      emailService.sendBookingRescheduleNotice(
+        { ...updatedBooking, service_name: booking.services.name },
+        updatedBooking.user_profiles,
+        updatedBooking.salons,
+        booking.appointment_date,
+        booking.start_time
+      );
+
+      res.status(200).json({
+        success: true,
+        data: { booking: updatedBooking }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to reschedule booking', 500, 'RESCHEDULE_FAILED');
+    }
+  });
+
   // Update booking status
   updateBookingStatus = asyncHandler(async (req, res) => {
     const { bookingId } = req.params;
@@ -305,23 +439,35 @@ class BookingController {
         throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
       }
 
-      // Check permissions
+      // Check permissions - owner, client, or staff at the salon
       const isOwner = booking.salons.owner_id === req.user.id;
       const isClient = booking.client_id === req.user.id;
-
+      
+      // Check if user is staff at this salon
+      let isStaff = false;
       if (!isOwner && !isClient) {
+        const { data: staffMember } = await supabase
+          .from('staff')
+          .select('id')
+          .eq('salon_id', booking.salon_id)
+          .eq('user_id', req.user.id)
+          .single();
+        isStaff = !!staffMember;
+      }
+
+      if (!isOwner && !isClient && !isStaff) {
         throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
       }
 
       // Clients can only cancel their own bookings
-      if (isClient && !isOwner && status !== 'cancelled') {
+      if (isClient && !isOwner && !isStaff && status !== 'cancelled') {
         throw new AppError('Clients can only cancel bookings', 403, 'CLIENT_CAN_ONLY_CANCEL');
       }
 
-      // Update booking
+      // Staff and owners can update status and add notes
       const updateData = { status };
-      if (staff_notes && isOwner) {
-        updateData.staff_notes = staff_notes;
+      if (staff_notes && (isOwner || isStaff)) {
+        updateData.salon_notes = staff_notes;
       }
 
       const { data: updatedBooking, error: updateError } = await supabase
@@ -640,6 +786,26 @@ class BookingController {
         throw error;
       }
       throw new AppError('Failed to get available slots count', 500, 'SLOTS_COUNT_FETCH_FAILED');
+    }
+  });
+
+  // Send booking reminders (admin/manual trigger - for testing)
+  sendBookingReminders = asyncHandler(async (req, res) => {
+    const bookingRemindersService = require('../services/bookingRemindersService');
+    
+    try {
+      const { hoursAhead } = req.query;
+      const hours = hoursAhead ? parseInt(hoursAhead) : 24;
+      
+      const result = await bookingRemindersService.sendRemindersForHoursAhead(hours);
+      
+      res.status(200).json({
+        success: true,
+        message: `Sent ${result.count} booking reminders`,
+        data: result
+      });
+    } catch (error) {
+      throw new AppError('Failed to send booking reminders', 500, 'REMINDERS_FAILED');
     }
   });
 

@@ -13,7 +13,9 @@ router.get('/my-bookings', bookingController.getMyBookings);
 router.get('/available-slots', bookingController.getAvailableSlots);
 router.get('/available-slots-count', bookingController.getAvailableSlotsCount);
 router.get('/stats', bookingController.getBookingStats);
+router.get('/reminders', bookingController.sendBookingReminders); // Admin/testing endpoint
 router.patch('/:bookingId/status', bookingController.updateBookingStatus);
+router.patch('/:bookingId/reschedule', bookingController.rescheduleBooking);
 
 // Salon owner booking routes
 router.get('/salon', bookingController.getSalonBookings);

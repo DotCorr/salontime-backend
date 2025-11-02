@@ -58,6 +58,38 @@ class EmailService {
     }
   }
 
+  // Send booking reschedule notice
+  async sendBookingRescheduleNotice(booking, client, salon, oldDate, oldTime) {
+    if (!this._checkEmailEnabled()) return null;
+
+    try {
+      const mailOptions = {
+        from: this.fromEmail,
+        to: client.email,
+        subject: 'Appointment Rescheduled - SalonTime',
+        html: this._generateBookingRescheduleTemplate(booking, client, salon, oldDate, oldTime),
+      };
+
+      const result = await this.transporter.sendMail(mailOptions);
+      
+      // Also notify salon owner
+      if (salon.email) {
+        const salonMailOptions = {
+          from: this.fromEmail,
+          to: salon.email,
+          subject: `Booking Rescheduled - ${client.first_name} ${client.last_name}`,
+          html: this._generateSalonRescheduleNoticeTemplate(booking, client, salon, oldDate, oldTime),
+        };
+        await this.transporter.sendMail(salonMailOptions);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Failed to send reschedule email:', error);
+      return null;
+    }
+  }
+
   // Send cancellation notice
   async sendCancellationNotice(booking, client, salon, reason = '') {
     if (!this._checkEmailEnabled()) return null;
@@ -249,6 +281,98 @@ class EmailService {
               <p><strong>Time:</strong> ${booking.start_time}</p>
             </div>
             <p>We look forward to seeing you!</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  // Generate booking reschedule template (for client)
+  _generateBookingRescheduleTemplate(booking, client, salon, oldDate, oldTime) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: #3498db; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; background: #f9f9f9; }
+          .booking-details { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; }
+          .change-notice { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 15px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Appointment Rescheduled</h1>
+          </div>
+          <div class="content">
+            <p>Hi ${client.first_name},</p>
+            <p>Your appointment has been rescheduled. Here are the updated details:</p>
+            
+            <div class="change-notice">
+              <p><strong>Previous Date/Time:</strong> ${oldDate} at ${oldTime}</p>
+            </div>
+            
+            <div class="booking-details">
+              <h3>New Appointment Details</h3>
+              <p><strong>Salon:</strong> ${salon.business_name}</p>
+              <p><strong>Date:</strong> ${booking.appointment_date}</p>
+              <p><strong>Time:</strong> ${booking.start_time} - ${booking.end_time}</p>
+              <p><strong>Service:</strong> ${booking.service_name}</p>
+              <p><strong>Status:</strong> ${booking.status}</p>
+            </div>
+            
+            <p>The salon will be notified of this change and will confirm the new time.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  // Generate salon reschedule notice template (for salon owner)
+  _generateSalonRescheduleNoticeTemplate(booking, client, salon, oldDate, oldTime) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: #e67e22; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; background: #f9f9f9; }
+          .booking-details { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; }
+          .change-notice { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 15px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Booking Rescheduled</h1>
+          </div>
+          <div class="content">
+            <p>Hi,</p>
+            <p>A client has rescheduled their appointment. Please confirm the new time in your SalonTime dashboard.</p>
+            
+            <div class="change-notice">
+              <p><strong>Previous Date/Time:</strong> ${oldDate} at ${oldTime}</p>
+            </div>
+            
+            <div class="booking-details">
+              <h3>New Appointment Details</h3>
+              <p><strong>Client:</strong> ${client.first_name} ${client.last_name}</p>
+              <p><strong>Email:</strong> ${client.email}</p>
+              <p><strong>Phone:</strong> ${client.phone || 'Not provided'}</p>
+              <p><strong>Date:</strong> ${booking.appointment_date}</p>
+              <p><strong>Time:</strong> ${booking.start_time} - ${booking.end_time}</p>
+              <p><strong>Service:</strong> ${booking.service_name}</p>
+              <p><strong>Status:</strong> ${booking.status} (requires your confirmation)</p>
+            </div>
+            
+            <p>Please log into your SalonTime dashboard to confirm or adjust this appointment.</p>
           </div>
         </div>
       </body>

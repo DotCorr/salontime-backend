@@ -82,26 +82,18 @@ class PaymentController {
         }
       });
 
-      // Store payment record
-      const { error: dbError } = await supabase
-        .from('payments')
-        .insert({
-          user_id: userId,
-          salon_id: salonId,
-          service_id: serviceId,
-          stripe_payment_intent_id: paymentIntent.id,
-          amount: amount,
-          currency,
-          status: 'pending'
-        });
-
-      if (dbError) {
-        console.error('Failed to store payment record:', dbError);
-      }
-
+      // Store payment intent metadata for later linking when booking is created
+      // We'll link this to the payment record via webhook or when booking is created
+      // The booking creation will look for this payment intent and link it
+      
       res.json({
         clientSecret: paymentIntent.client_secret,
-        paymentIntentId: paymentIntent.id
+        paymentIntentId: paymentIntent.id,
+        metadata: {
+          userId,
+          serviceId,
+          salonId
+        }
       });
     } catch (error) {
       console.error('Payment intent creation error:', error);
@@ -158,14 +150,16 @@ class PaymentController {
       const { page = 1, limit = 20 } = req.query;
       const offset = (page - 1) * limit;
 
+      // Query payments via bookings (payments table doesn't have user_id)
       const { data: payments, error } = await supabase
         .from('payments')
         .select(`
           *,
-          salons(name, address),
-          services(name, duration)
+          bookings!inner(client_id, salon_id, service_id),
+          salons(name, address, business_name),
+          services(name, duration, price)
         `)
-        .eq('user_id', userId)
+        .eq('bookings.client_id', userId)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
@@ -173,8 +167,30 @@ class PaymentController {
         throw error;
       }
 
+      // Flatten the response for easier frontend consumption
+      const flattenedPayments = (payments || []).map(payment => ({
+        id: payment.id,
+        booking_id: payment.booking_id,
+        amount: payment.amount,
+        currency: payment.currency,
+        status: payment.status,
+        payment_method: payment.payment_method,
+        stripe_payment_intent_id: payment.stripe_payment_intent_id,
+        created_at: payment.created_at,
+        updated_at: payment.updated_at,
+        salon: payment.salons ? {
+          name: payment.salons.business_name || payment.salons.name,
+          address: payment.salons.address
+        } : null,
+        service: payment.services ? {
+          name: payment.services.name,
+          duration: payment.services.duration,
+          price: payment.services.price
+        } : null
+      }));
+
       res.json({
-        payments: payments || [],
+        payments: flattenedPayments,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -455,19 +471,91 @@ class PaymentController {
   // Handle successful payment webhook
   async handlePaymentSuccess(paymentIntent) {
     try {
-      const { error } = await supabase
-        .from('payments')
-        .update({ 
-          status: 'succeeded',
-          updated_at: new Date().toISOString()
-        })
-        .eq('stripe_payment_intent_id', paymentIntent.id);
+      // Extract metadata to find the booking if payment record doesn't exist yet
+      const metadata = paymentIntent.metadata || {};
+      const { userId, serviceId, salonId } = metadata;
 
-      if (error) {
-        console.error('Failed to update payment status:', error);
+      // Try to find existing payment record
+      let { data: existingPayment } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('stripe_payment_intent_id', paymentIntent.id)
+        .single();
+
+      // If no payment record exists, try to find booking and create payment record
+      if (!existingPayment && userId && serviceId && salonId) {
+        // Find the most recent booking for this user/service/salon that doesn't have a payment yet
+        const { data: booking } = await supabase
+          .from('bookings')
+          .select('id')
+          .eq('client_id', userId)
+          .eq('salon_id', salonId)
+          .eq('service_id', serviceId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (booking) {
+          // Check if payment record already exists for this booking
+          const { data: bookingPayment } = await supabase
+            .from('payments')
+            .select('*')
+            .eq('booking_id', booking.id)
+            .single();
+
+          if (!bookingPayment) {
+            // Create payment record linked to booking
+            const { data: newPayment } = await supabase
+              .from('payments')
+              .insert([{
+                booking_id: booking.id,
+                stripe_payment_intent_id: paymentIntent.id,
+                amount: paymentIntent.amount / 100, // Convert from cents
+                currency: paymentIntent.currency.toUpperCase(),
+                status: 'completed'
+              }])
+              .select()
+              .single();
+
+            existingPayment = newPayment;
+            console.log(`✅ Created and linked payment record for booking ${booking.id}`);
+          } else {
+            // Update existing payment record with payment intent ID
+            const { data: updatedPayment } = await supabase
+              .from('payments')
+              .update({
+                stripe_payment_intent_id: paymentIntent.id,
+                status: 'completed',
+                updated_at: new Date().toISOString()
+              })
+              .eq('booking_id', booking.id)
+              .select()
+              .single();
+
+            existingPayment = updatedPayment;
+            console.log(`✅ Linked payment intent to existing payment record for booking ${booking.id}`);
+          }
+        }
       }
 
-      console.log(`Payment succeeded: ${paymentIntent.id}`);
+      // Update payment status if record exists
+      if (existingPayment) {
+        const { error } = await supabase
+          .from('payments')
+          .update({ 
+            status: 'completed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingPayment.id);
+
+        if (error) {
+          console.error('Failed to update payment status:', error);
+        } else {
+          console.log(`✅ Payment succeeded and updated: ${paymentIntent.id}`);
+        }
+      } else {
+        console.warn(`⚠️ Payment succeeded but no booking found to link: ${paymentIntent.id}`);
+      }
     } catch (error) {
       console.error('Error handling payment success:', error);
     }
