@@ -22,16 +22,36 @@ class BookingController {
     }
 
     try {
-      // Get service details
+      // Get service details (without join to avoid RLS issues)
       const { data: service, error: serviceError } = await supabase
         .from('services')
-        .select('*, salons(*)')
+        .select('*')
         .eq('id', service_id)
         .single();
 
       if (serviceError || !service) {
+        console.error(`❌ Service lookup error:`, serviceError);
         throw new AppError('Service not found', 404, 'SERVICE_NOT_FOUND');
       }
+
+      // Verify service belongs to salon
+      if (service.salon_id !== salon_id) {
+        throw new AppError('Service does not belong to this salon', 404, 'SERVICE_NOT_FOUND');
+      }
+
+      // Get salon details separately (needed for email)
+      const { data: salon, error: salonError } = await supabase
+        .from('salons')
+        .select('*')
+        .eq('id', salon_id)
+        .single();
+
+      if (salonError || !salon) {
+        throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
+      }
+
+      // Attach salon to service for email service
+      service.salons = salon;
 
       // Calculate end time
       const startTime = new Date(`${appointment_date}T${start_time}`);
