@@ -376,6 +376,7 @@ class SalonController {
         .eq('is_active', true);
 
       // Text search filter (name, description, city)
+      // Note: Service search will be handled after fetching salons
       if (searchQuery) {
         query = query.or(`business_name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%`);
       }
@@ -475,20 +476,89 @@ class SalonController {
         }
       }
 
-      // Filter by services if provided
-      if (services || service) {
-        const serviceList = services ? services.split(',') : [service];
-        filteredSalons = filteredSalons.filter(salon => {
-          // Get salon services - check services_offered field or fetch from services table
-          const salonServices = salon.services_offered || [];
-          return serviceList.some(svc => {
-            const serviceName = svc.toLowerCase();
-            return salonServices.some(s => 
-              (s.name || '').toLowerCase().includes(serviceName) ||
-              (s.category || '').toLowerCase().includes(serviceName)
-            );
-          });
-        });
+      // Filter by services if provided OR search query matches a service name
+      if (services || service || searchQuery) {
+        const serviceList = services ? services.split(',') : (service ? [service] : []);
+        // If search query exists and no explicit service filter, check if it matches a service
+        const searchAsService = searchQuery && !services && !service ? [searchQuery] : [];
+        const allServiceFilters = [...serviceList, ...searchAsService];
+        
+        if (allServiceFilters.length > 0) {
+          // Fetch services for all salons to filter
+          const salonIds = filteredSalons.map(s => s.id);
+          
+          if (salonIds.length > 0) {
+            const { data: salonServicesData, error: servicesError } = await supabase
+              .from('services')
+              .select('salon_id, name, category_id, service_categories(name)')
+              .in('salon_id', salonIds)
+              .eq('is_active', true);
+            
+            // Group services by salon_id
+            const servicesBySalon = {};
+            if (!servicesError && salonServicesData) {
+              salonServicesData.forEach(service => {
+                if (!servicesBySalon[service.salon_id]) {
+                  servicesBySalon[service.salon_id] = [];
+                }
+                servicesBySalon[service.salon_id].push({
+                  name: service.name,
+                  category: service.service_categories?.name || ''
+                });
+              });
+            }
+            
+            // Filter salons that have matching services
+            filteredSalons = filteredSalons.filter(salon => {
+              const salonServices = servicesBySalon[salon.id] || [];
+              return allServiceFilters.some(filterService => {
+                const filterLower = filterService.toLowerCase();
+                return salonServices.some(s => 
+                  (s.name || '').toLowerCase().includes(filterLower) ||
+                  (s.category || '').toLowerCase().includes(filterLower)
+                );
+              });
+            });
+          }
+        }
+      }
+      
+      // Filter by price range if provided
+      const minPriceFilter = parseFloat(req.query.min_price || req.query.minPrice || 0);
+      const maxPriceFilter = parseFloat(req.query.max_price || req.query.maxPrice || 10000);
+      
+      if (minPriceFilter > 0 || maxPriceFilter < 10000) {
+        const salonIds = filteredSalons.map(s => s.id);
+        
+        if (salonIds.length > 0) {
+          // Fetch services to check price range
+          const { data: salonServicesData, error: servicesError } = await supabase
+            .from('services')
+            .select('salon_id, price')
+            .in('salon_id', salonIds)
+            .eq('is_active', true);
+          
+          if (!servicesError && salonServicesData) {
+            // Group min/max prices by salon
+            const pricesBySalon = {};
+            salonServicesData.forEach(service => {
+              if (!pricesBySalon[service.salon_id]) {
+                pricesBySalon[service.salon_id] = { min: service.price, max: service.price };
+              } else {
+                pricesBySalon[service.salon_id].min = Math.min(pricesBySalon[service.salon_id].min, service.price);
+                pricesBySalon[service.salon_id].max = Math.max(pricesBySalon[service.salon_id].max, service.price);
+              }
+            });
+            
+            // Filter salons where price range overlaps with filter
+            filteredSalons = filteredSalons.filter(salon => {
+              const salonPrices = pricesBySalon[salon.id];
+              if (!salonPrices) return true; // Keep salons without services
+              // Salon matches if its price range overlaps with filter range
+              return salonPrices.min <= maxPriceFilter && salonPrices.max >= minPriceFilter;
+            });
+          }
+        }
       }
 
       // Filter by open_now if requested
