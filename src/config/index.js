@@ -86,8 +86,8 @@ const config = {
   upload: {
     max_avatar_size: parseInt(process.env.MAX_AVATAR_SIZE) || 5242880, // 5 MB default
     allowed_avatar_types: process.env.ALLOWED_AVATAR_TYPES 
-      ? process.env.ALLOWED_AVATAR_TYPES.split(',')
-      : ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+      ? process.env.ALLOWED_AVATAR_TYPES.split(',').map(t => t.trim())
+      : ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
   },
 
   // Analytics Configuration

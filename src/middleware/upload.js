@@ -4,12 +4,26 @@ const config = require('../config');
 // Configure multer to store files in memory (we'll upload to Supabase)
 const storage = multer.memoryStorage();
 
+// Normalize MIME types (some systems use image/jpg instead of image/jpeg)
+const normalizeMimeType = (mimeType) => {
+  if (mimeType === 'image/jpg') {
+    return 'image/jpeg';
+  }
+  return mimeType;
+};
+
 // File filter for avatar uploads
 const fileFilter = (req, file, cb) => {
-  if (config.upload.allowed_avatar_types.includes(file.mimetype)) {
+  const normalizedMimeType = normalizeMimeType(file.mimetype);
+  
+  // Check if normalized type is allowed or original is allowed
+  if (config.upload.allowed_avatar_types.includes(normalizedMimeType) || 
+      config.upload.allowed_avatar_types.includes(file.mimetype)) {
+    // Normalize the mimetype for downstream processing
+    file.mimetype = normalizedMimeType;
     cb(null, true);
   } else {
-    cb(new Error(`Invalid file type. Allowed types: ${config.upload.allowed_avatar_types.join(', ')}`), false);
+    cb(new Error(`Invalid file type: ${file.mimetype}. Allowed types: ${config.upload.allowed_avatar_types.join(', ')}`), false);
   }
 };
 
