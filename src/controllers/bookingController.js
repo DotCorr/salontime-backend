@@ -594,15 +594,15 @@ class BookingController {
     }
   });
 
-  // Get booking statistics for user
+  // Get booking statistics for user (including favorites count)
   getBookingStats = asyncHandler(async (req, res) => {
     try {
       const userId = req.user.id;
       
       // Get total bookings count
-      const { data: totalBookings, error: totalError } = await supabaseService.supabaseService.supabase
+      const { count: totalBookingsCount, error: totalError } = await supabaseService.supabase
         .from('bookings')
-        .select('id', { count: 'exact' })
+        .select('*', { count: 'exact', head: true })
         .eq('client_id', userId);
 
       if (totalError) {
@@ -610,9 +610,9 @@ class BookingController {
       }
 
       // Get upcoming bookings count
-      const { data: upcomingBookings, error: upcomingError } = await supabaseService.supabaseService.supabase
+      const { count: upcomingBookingsCount, error: upcomingError } = await supabaseService.supabase
         .from('bookings')
-        .select('id', { count: 'exact' })
+        .select('*', { count: 'exact', head: true })
         .eq('client_id', userId)
         .gte('appointment_date', new Date().toISOString().split('T')[0]);
 
@@ -621,9 +621,9 @@ class BookingController {
       }
 
       // Get completed bookings count
-      const { data: completedBookings, error: completedError } = await supabaseService.supabaseService.supabase
+      const { count: completedBookingsCount, error: completedError } = await supabaseService.supabase
         .from('bookings')
-        .select('id', { count: 'exact' })
+        .select('*', { count: 'exact', head: true })
         .eq('client_id', userId)
         .eq('status', 'completed');
 
@@ -631,12 +631,25 @@ class BookingController {
         throw new AppError('Failed to fetch completed bookings', 500, 'COMPLETED_BOOKINGS_FAILED');
       }
 
+      // Get favorites count
+      const { count: favoritesCount, error: favoritesError } = await supabaseService.supabase
+        .from('user_favorites')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+      if (favoritesError) {
+        console.error('Error fetching favorites count:', favoritesError);
+        // Don't fail the whole request if favorites count fails
+      }
+
       res.status(200).json({
         success: true,
         data: {
-          total_bookings: totalBookings?.length || 0,
-          upcoming_bookings: upcomingBookings?.length || 0,
-          completed_bookings: completedBookings?.length || 0
+          total_bookings: totalBookingsCount || 0,
+          upcoming_bookings: upcomingBookingsCount || 0,
+          completed_bookings: completedBookingsCount || 0,
+          favorite_salons: favoritesCount || 0,
+          // Note: Clients don't have ratings (they rate salons), so we don't include average_rating
         }
       });
 

@@ -1,5 +1,7 @@
 const supabaseService = require('../services/supabaseService');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
+const multer = require('multer');
+const config = require('../config');
 
 class UserController {
   // Update user profile
@@ -7,7 +9,7 @@ class UserController {
     const { first_name, last_name, phone, language, role, user_type } = req.body;
 
     // Validate input - BLOCK role/user_type changes
-    const allowedUpdates = ['first_name', 'last_name', 'phone', 'language'];
+    const allowedUpdates = ['first_name', 'last_name', 'phone', 'language', 'avatar_url'];
     const updates = {};
 
     Object.keys(req.body).forEach(key => {
@@ -173,6 +175,60 @@ class UserController {
         throw error;
       }
       throw new AppError('Failed to track user interaction', 500, 'INTERACTION_TRACKING_FAILED');
+    }
+  });
+
+  // Upload avatar image
+  uploadAvatar = asyncHandler(async (req, res) => {
+    if (!req.file) {
+      throw new AppError('No file uploaded', 400, 'NO_FILE_UPLOADED');
+    }
+
+    const userId = req.user.id;
+    const fileBuffer = req.file.buffer;
+    const mimeType = req.file.mimetype;
+    const originalFileName = req.file.originalname;
+
+    // Validate file type
+    if (!config.upload.allowed_avatar_types.includes(mimeType)) {
+      throw new AppError(
+        `Invalid file type. Allowed types: ${config.upload.allowed_avatar_types.join(', ')}`,
+        400,
+        'INVALID_FILE_TYPE'
+      );
+    }
+
+    // Validate file size
+    if (fileBuffer.length > config.upload.max_avatar_size) {
+      throw new AppError(
+        `File too large. Maximum size: ${config.upload.max_avatar_size / 1024 / 1024}MB`,
+        400,
+        'FILE_TOO_LARGE'
+      );
+    }
+
+    try {
+      // Upload to Supabase Storage
+      const avatarUrl = await supabaseService.uploadAvatar(userId, fileBuffer, mimeType, originalFileName);
+
+      // Update user profile with new avatar URL
+      const updatedProfile = await supabaseService.updateUserProfile(userId, {
+        avatar_url: avatarUrl
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          user: updatedProfile,
+          avatar_url: avatarUrl
+        }
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('Failed to upload avatar', 500, 'AVATAR_UPLOAD_FAILED');
     }
   });
 }

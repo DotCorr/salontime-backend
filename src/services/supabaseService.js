@@ -127,6 +127,59 @@ class SupabaseService {
     return data;
   }
 
+  // Upload avatar to Supabase Storage
+  async uploadAvatar(userId, fileBuffer, mimeType, originalFileName) {
+    const config = require('../config');
+    const bucketName = config.supabase.storage_bucket;
+    
+    // Get file extension from mime type
+    const extMap = {
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif'
+    };
+    const ext = extMap[mimeType] || 'jpg';
+    
+    // Create file path: {user_id}/avatar.{ext}
+    const filePath = `${userId}/avatar.${ext}`;
+    
+    // Delete old avatar if exists
+    const { data: oldFiles } = await supabaseAdmin.storage
+      .from(bucketName)
+      .list(userId);
+    
+    if (oldFiles && oldFiles.length > 0) {
+      // Delete all files in user's folder (in case of multiple formats)
+      const filesToDelete = oldFiles.map(file => `${userId}/${file.name}`);
+      await supabaseAdmin.storage
+        .from(bucketName)
+        .remove(filesToDelete);
+    }
+    
+    // Upload new avatar
+    const { data, error } = await supabaseAdmin.storage
+      .from(bucketName)
+      .upload(filePath, fileBuffer, {
+        contentType: mimeType,
+        upsert: true,
+        cacheControl: '3600'
+      });
+    
+    if (error) {
+      console.error('Error uploading avatar:', error);
+      throw new AppError('Failed to upload avatar', 500, 'AVATAR_UPLOAD_FAILED');
+    }
+    
+    // Get public URL
+    const { data: urlData } = supabaseAdmin.storage
+      .from(bucketName)
+      .getPublicUrl(filePath);
+    
+    return urlData.publicUrl;
+  }
+
   // Authentication helpers
   async checkUserExists(email) {
     const { data, error } = await supabaseAdmin.auth.admin.getUserByEmail(email);

@@ -16,7 +16,9 @@ const config = {
   supabase: {
     url: process.env.SUPABASE_URL,
     anon_key: process.env.SUPABASE_ANON_KEY,
-    service_role_key: process.env.SUPABASE_SERVICE_ROLE_KEY
+    service_role_key: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    storage_bucket: process.env.SUPABASE_STORAGE_BUCKET || 'avatars'
+    // Note: storage_url not needed - Supabase's getPublicUrl() automatically constructs it
   },
 
   // Stripe Configuration
@@ -78,6 +80,14 @@ const config = {
   request: {
     size_limit: process.env.REQUEST_SIZE_LIMIT || '10mb',
     url_limit: process.env.REQUEST_URL_LIMIT || '10mb'
+  },
+
+  // File Upload Configuration
+  upload: {
+    max_avatar_size: parseInt(process.env.MAX_AVATAR_SIZE) || 5242880, // 5 MB default
+    allowed_avatar_types: process.env.ALLOWED_AVATAR_TYPES 
+      ? process.env.ALLOWED_AVATAR_TYPES.split(',')
+      : ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
   },
 
   // Analytics Configuration

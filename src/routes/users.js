@@ -1,6 +1,7 @@
 const express = require('express');
 const userController = require('../controllers/userController');
 const { authenticateToken } = require('../middleware/auth');
+const { avatarUpload } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -11,6 +12,9 @@ router.use(authenticateToken);
 router.put('/profile', userController.updateProfile);
 router.get('/profile', userController.getProfile);
 router.get('/dashboard', userController.getDashboard);
+
+// Avatar upload (multipart/form-data)
+router.post('/avatar', avatarUpload, userController.uploadAvatar);
 
 // Notification settings
 router.get('/notification-settings', userController.getNotificationSettings);
