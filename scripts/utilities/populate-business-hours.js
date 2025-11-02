@@ -18,15 +18,15 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Default business hours template (Monday-Friday: 9am-6pm, Saturday: 9am-5pm, Sunday: Closed)
+// Default business hours template (Monday-Saturday: 9am-11pm, Sunday: 10am-11pm)
 const defaultBusinessHours = {
-  monday: { opening: '09:00', closing: '18:00', closed: false },
-  tuesday: { opening: '09:00', closing: '18:00', closed: false },
-  wednesday: { opening: '09:00', closing: '18:00', closed: false },
-  thursday: { opening: '09:00', closing: '18:00', closed: false },
-  friday: { opening: '09:00', closing: '18:00', closed: false },
-  saturday: { opening: '09:00', closing: '17:00', closed: false },
-  sunday: { closed: true }
+  monday: { opening: '09:00', closing: '23:00', closed: false },
+  tuesday: { opening: '09:00', closing: '23:00', closed: false },
+  wednesday: { opening: '09:00', closing: '23:00', closed: false },
+  thursday: { opening: '09:00', closing: '23:00', closed: false },
+  friday: { opening: '09:00', closing: '23:00', closed: false },
+  saturday: { opening: '09:00', closing: '23:00', closed: false },
+  sunday: { opening: '10:00', closing: '23:00', closed: false } // Open on Sunday for testing
 };
 
 async function populateBusinessHours() {

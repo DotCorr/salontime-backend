@@ -89,7 +89,7 @@ class PaymentController {
       // Store payment intent metadata for later linking when booking is created
       // We'll link this to the payment record via webhook or when booking is created
       // The booking creation will look for this payment intent and link it
-      
+
       res.json({
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
@@ -545,15 +545,15 @@ class PaymentController {
       // Update payment status if record exists
       if (existingPayment) {
         const { error } = await supabase
-          .from('payments')
-          .update({ 
+        .from('payments')
+        .update({ 
             status: 'completed',
-            updated_at: new Date().toISOString()
-          })
+          updated_at: new Date().toISOString()
+        })
           .eq('id', existingPayment.id);
 
-        if (error) {
-          console.error('Failed to update payment status:', error);
+      if (error) {
+        console.error('Failed to update payment status:', error);
         } else {
           console.log(`✅ Payment succeeded and updated: ${paymentIntent.id}`);
         }

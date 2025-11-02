@@ -195,11 +195,14 @@ class BookingController {
 
   // Get user's bookings
   getMyBookings = asyncHandler(async (req, res) => {
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, upcoming, page = 1, limit = 100 } = req.query; // Increased limit to 100
     const offset = (page - 1) * limit;
 
     try {
-      let query = supabase
+      // Get authenticated Supabase client with user's token for RLS
+      const authenticatedSupabase = getAuthenticatedClient(req.token);
+
+      let query = authenticatedSupabase
         .from('bookings')
         .select(`
           *,
@@ -209,22 +212,51 @@ class BookingController {
           payments(*)
         `)
         .eq('client_id', req.user.id)
+        // Don't exclude cancelled by default - let the UI decide
         .order('appointment_date', { ascending: false })
-        .order('start_time', { ascending: false })
-        .range(offset, offset + limit - 1);
+        .order('start_time', { ascending: false });
 
       if (status) {
         query = query.eq('status', status);
       }
 
-      const { data: bookings, error } = await query;
+      // Don't apply pagination yet - we need to filter by date first
+      const { data: allBookings, error } = await query;
+
+      console.log(`📋 getMyBookings - Found ${allBookings?.length || 0} total bookings for user ${req.user.id}, upcoming=${upcoming}`);
 
       if (error) {
+        console.error('❌ Error fetching bookings:', error);
         throw new AppError('Failed to fetch bookings', 500, 'BOOKINGS_FETCH_FAILED');
       }
 
+      // Filter by upcoming/past in JavaScript (more reliable than complex SQL)
+      let filteredBookings = allBookings || [];
+      if (upcoming !== undefined) {
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const now = new Date();
+        const currentDateTime = now;
+        
+        filteredBookings = filteredBookings.filter(booking => {
+          const appointmentDate = booking.appointment_date;
+          const [hours, minutes, seconds] = (booking.start_time || '00:00:00').split(':').map(Number);
+          const appointmentDateTime = new Date(
+            appointmentDate + 'T' + 
+            `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+          );
+          
+          const isUpcoming = appointmentDateTime >= currentDateTime;
+          return upcoming === 'true' || upcoming === true ? isUpcoming : !isUpcoming;
+        });
+      }
+
+      // Apply pagination after filtering
+      const paginatedBookings = filteredBookings.slice(offset, offset + limit);
+
+      console.log(`📋 After filtering: ${filteredBookings.length} bookings, returning ${paginatedBookings.length} (page ${page})`);
+
       // Flatten the nested data for easier frontend consumption
-      const flattenedBookings = bookings.map(booking => ({
+      const flattenedBookings = paginatedBookings.map(booking => ({
         ...booking,
         salonName: booking.salons?.business_name || 'Unknown Salon',
         serviceName: booking.services?.name || 'Unknown Service',
@@ -241,7 +273,9 @@ class BookingController {
           bookings: flattenedBookings,
           pagination: {
             page: parseInt(page),
-            limit: parseInt(limit)
+            limit: parseInt(limit),
+            total: filteredBookings.length,
+            totalPages: Math.ceil(filteredBookings.length / limit)
           }
         }
       });
@@ -602,7 +636,8 @@ class BookingController {
         openTime,
         closeTime,
         service.duration,
-        existingBookings || []
+        existingBookings || [],
+        date // Pass date to allow current time booking for today
       );
 
       res.status(200).json({
@@ -619,15 +654,28 @@ class BookingController {
   });
 
   // Helper method to calculate available slots
-  _calculateAvailableSlots(openTime, closeTime, serviceDuration, existingBookings) {
+  _calculateAvailableSlots(openTime, closeTime, serviceDuration, existingBookings, appointmentDate = null) {
     const slots = [];
-    const slotInterval = 30; // 30-minute intervals
+    const slotInterval = 15; // 15-minute intervals for more flexibility
 
     const [openHour, openMinute] = openTime.split(':').map(Number);
     const [closeHour, closeMinute] = closeTime.split(':').map(Number);
 
     let currentTime = openHour * 60 + openMinute; // Convert to minutes
     const endTime = closeHour * 60 + closeMinute;
+
+    // Get current time if booking for today - allow booking at current time
+    if (appointmentDate) {
+      const today = new Date().toISOString().split('T')[0];
+      if (appointmentDate === today) {
+        const now = new Date();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        // Allow booking at current time or very soon (5 minute buffer for processing)
+        const minBookingTime = currentMinutes - 5;
+        // Start from minimum of (opening time, current time with buffer)
+        currentTime = Math.max(currentTime, minBookingTime);
+      }
+    }
 
     while (currentTime + serviceDuration <= endTime) {
       const timeStr = this._minutesToTimeString(currentTime);
