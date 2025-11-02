@@ -1,7 +1,7 @@
 const supabaseService = require('../services/supabaseService');
 const emailService = require('../services/emailService');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
-const { supabase } = require('../config/database');
+const { supabase, supabaseAdmin } = require('../config/database');
 
 class BookingController {
   // Create new booking
@@ -348,8 +348,8 @@ class BookingController {
     }
 
     try {
-      // Get service duration
-      const { data: service, error: serviceError } = await supabase
+      // Get service duration (use admin client to bypass RLS policies)
+      const { data: service, error: serviceError } = await supabaseAdmin
         .from('services')
         .select('duration')
         .eq('id', service_id)
@@ -359,8 +359,8 @@ class BookingController {
         throw new AppError('Service not found', 404, 'SERVICE_NOT_FOUND');
       }
 
-      // Get salon business hours
-      const { data: salon, error: salonError } = await supabase
+      // Get salon business hours (use admin client to bypass RLS policies)
+      const { data: salon, error: salonError } = await supabaseAdmin
         .from('salons')
         .select('business_hours')
         .eq('id', salon_id)
@@ -370,8 +370,8 @@ class BookingController {
         throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
       }
 
-      // Get existing bookings for the date
-      let bookingsQuery = supabase
+      // Get existing bookings for the date (use admin client to bypass RLS policies)
+      let bookingsQuery = supabaseAdmin
         .from('bookings')
         .select('start_time, end_time')
         .eq('salon_id', salon_id)
@@ -490,9 +490,9 @@ class BookingController {
     }
 
     try {
-      // Get service duration
+      // Get service duration (use admin client to bypass RLS policies)
       console.log(`📅 Looking up service: ${service_id} for salon: ${salon_id}`);
-      const { data: service, error: serviceError } = await supabase
+      const { data: service, error: serviceError } = await supabaseAdmin
         .from('services')
         .select('duration, id, name, salon_id')
         .eq('id', service_id)
@@ -516,8 +516,8 @@ class BookingController {
       
       console.log(`✅ Found service: ${service.name} (duration: ${service.duration} mins)`);
 
-      // Get salon business hours
-      const { data: salon, error: salonError } = await supabase
+      // Get salon business hours (use admin client to bypass RLS policies)
+      const { data: salon, error: salonError } = await supabaseAdmin
         .from('salons')
         .select('business_hours')
         .eq('id', salon_id)
@@ -527,8 +527,8 @@ class BookingController {
         throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
       }
 
-      // Get all bookings in date range
-      let bookingsQuery = supabase
+      // Get all bookings in date range (use admin client to bypass RLS policies)
+      let bookingsQuery = supabaseAdmin
         .from('bookings')
         .select('appointment_date, start_time, end_time')
         .eq('salon_id', salon_id)
