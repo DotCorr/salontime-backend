@@ -17,6 +17,8 @@ router.get('/history', paymentController.getPaymentHistory);
 // Salon owner payment routes
 router.get('/salon', paymentController.getSalonPayments);
 router.get('/analytics', paymentController.getPaymentAnalytics);
+router.patch('/booking/:bookingId/status', paymentController.updatePaymentStatus); // Manual payment status update (cash)
+router.post('/booking/:bookingId/payment-link', paymentController.generatePaymentLink); // Generate payment link for client
 
 // Subscription routes
 router.post('/subscription', paymentController.processSubscription);

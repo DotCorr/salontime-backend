@@ -1,6 +1,7 @@
 const stripeService = require('../services/stripeService');
 const { supabase } = require('../config/database');
 const config = require('../config');
+const { asyncHandler, AppError } = require('../middleware/errorHandler');
 
 class PaymentController {
   // Handle Stripe webhooks (no auth required - uses webhook signature verification)
@@ -25,6 +26,9 @@ class PaymentController {
           break;
         case 'payment_intent.payment_failed':
           await this.handlePaymentFailure(event.data.object);
+          break;
+        case 'checkout.session.completed':
+          await this.handleCheckoutSessionCompleted(event.data.object);
           break;
         case 'customer.subscription.created':
         case 'customer.subscription.updated':
@@ -579,6 +583,192 @@ class PaymentController {
       console.log(`Payment failed: ${paymentIntent.id}`);
     } catch (error) {
       console.error('Error handling payment failure:', error);
+    }
+  }
+
+  // Update payment status manually (for cash/physical payments - salon owner only)
+  updatePaymentStatus = asyncHandler(async (req, res) => {
+    const { bookingId } = req.params;
+    const { status, payment_method } = req.body;
+    const userId = req.user.id;
+
+    const validStatuses = ['pending', 'completed', 'failed', 'refunded'];
+    if (!validStatuses.includes(status)) {
+      throw new AppError('Invalid payment status', 400, 'INVALID_PAYMENT_STATUS');
+    }
+
+    // Verify user owns the salon for this booking
+    const { data: booking, error: bookingError } = await supabase
+      .from('bookings')
+      .select(`
+        *,
+        salons(owner_id, id)
+      `)
+      .eq('id', bookingId)
+      .single();
+
+    if (bookingError || !booking) {
+      throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
+    }
+
+    if (booking.salons.owner_id !== userId) {
+      throw new AppError('Access denied: Not the salon owner', 403, 'ACCESS_DENIED');
+    }
+
+    // Update payment status
+    const updateData = {
+      status,
+      updated_at: new Date().toISOString()
+    };
+
+    if (payment_method) {
+      updateData.payment_method = payment_method;
+    }
+
+    const { data: updatedPayment, error: updateError } = await supabase
+      .from('payments')
+      .update(updateData)
+      .eq('booking_id', bookingId)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw new AppError('Failed to update payment status', 500, 'PAYMENT_UPDATE_FAILED');
+    }
+
+    res.json({
+      success: true,
+      data: { payment: updatedPayment }
+    });
+  });
+
+  // Generate payment link for booking (salon owner generates link for client to pay)
+  generatePaymentLink = asyncHandler(async (req, res) => {
+    const { bookingId } = req.params;
+    const userId = req.user.id;
+
+    // Get booking with salon info
+    const { data: booking, error: bookingError } = await supabase
+      .from('bookings')
+      .select(`
+        *,
+        salons(owner_id, stripe_account_id, business_name),
+        services(name, price),
+        user_profiles!client_id(email, first_name, last_name)
+      `)
+      .eq('id', bookingId)
+      .single();
+
+    if (bookingError || !booking) {
+      throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
+    }
+
+    // Verify user owns the salon
+    if (booking.salons.owner_id !== userId) {
+      throw new AppError('Access denied: Not the salon owner', 403, 'ACCESS_DENIED');
+    }
+
+    // Check if salon has Stripe account
+    if (!booking.salons.stripe_account_id) {
+      throw new AppError('Salon Stripe account not configured. Please complete Stripe onboarding first.', 400, 'STRIPE_NOT_CONFIGURED');
+    }
+
+    // Get or create payment record
+    let { data: payment } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('booking_id', bookingId)
+      .single();
+
+    if (!payment) {
+      // Create payment record if it doesn't exist
+      const { data: newPayment, error: paymentCreateError } = await supabase
+        .from('payments')
+        .insert([{
+          booking_id: bookingId,
+          amount: booking.services.price,
+          currency: 'EUR',
+          status: 'pending'
+        }])
+        .select()
+        .single();
+      
+      if (paymentCreateError) {
+        throw new AppError('Failed to create payment record', 500, 'PAYMENT_CREATE_FAILED');
+      }
+      payment = newPayment;
+    }
+
+    // Generate checkout session (payment link)
+    const checkoutSession = await stripeService.createCheckoutSession({
+      bookingId: bookingId,
+      amount: payment.amount,
+      currency: payment.currency || 'eur',
+      connectedAccountId: booking.salons.stripe_account_id,
+      productName: `${booking.services.name} - ${booking.salons.business_name}`,
+      description: `Payment for booking on ${booking.appointment_date} at ${booking.start_time}`,
+      successUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment-success?session_id={CHECKOUT_SESSION_ID}&booking_id=${bookingId}`,
+      cancelUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment-cancel?booking_id=${bookingId}`,
+      metadata: {
+        booking_id: bookingId,
+        client_id: booking.client_id,
+        salon_id: booking.salon_id,
+        service_id: booking.service_id
+      }
+    });
+
+    // Update payment record with checkout session ID
+    const { error: updateError } = await supabase
+      .from('payments')
+      .update({
+        stripe_checkout_session_id: checkoutSession.id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('booking_id', bookingId);
+
+    if (updateError) {
+      console.warn('Failed to update payment with checkout session ID:', updateError);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        paymentLink: checkoutSession.url,
+        checkoutSessionId: checkoutSession.id,
+        expiresAt: checkoutSession.expires_at
+      }
+    });
+  });
+
+  // Handle checkout session completed webhook
+  async handleCheckoutSessionCompleted(session) {
+    try {
+      const { booking_id } = session.metadata || {};
+      
+      if (!booking_id) {
+        console.warn('⚠️ Checkout session completed but no booking_id in metadata:', session.id);
+        return;
+      }
+
+      // Update payment record
+      const { error: updateError } = await supabase
+        .from('payments')
+        .update({
+          status: 'completed',
+          stripe_checkout_session_id: session.id,
+          stripe_payment_intent_id: session.payment_intent,
+          payment_method: 'card',
+          updated_at: new Date().toISOString()
+        })
+        .eq('booking_id', booking_id);
+
+      if (updateError) {
+        console.error('Failed to update payment from checkout session:', updateError);
+      } else {
+        console.log(`✅ Payment completed via checkout session for booking ${booking_id}`);
+      }
+    } catch (error) {
+      console.error('Error handling checkout session completed:', error);
     }
   }
 

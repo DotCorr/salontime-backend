@@ -608,6 +608,45 @@ class StripeService {
     }
   }
 
+  // Create checkout session for salon's connected account (payment link)
+  // Creates session on platform, transfers payment to connected account
+  async createCheckoutSession(paymentData) {
+    this._checkStripeEnabled();
+
+    try {
+      // Create checkout session on platform account, with transfer to connected account
+      const session = await this.stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'payment',
+        line_items: [{
+          price_data: {
+            currency: paymentData.currency || 'eur',
+            product_data: {
+              name: paymentData.productName || 'Booking Payment',
+              description: paymentData.description || `Payment for booking ${paymentData.bookingId}`,
+            },
+            unit_amount: Math.round(paymentData.amount * 100), // Convert to cents
+          },
+          quantity: 1,
+        }],
+        success_url: paymentData.successUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: paymentData.cancelUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment-cancel`,
+        payment_intent_data: {
+          application_fee_amount: 0, // No platform fee
+          transfer_data: {
+            destination: paymentData.connectedAccountId, // Salon's connected account
+          },
+          on_behalf_of: paymentData.connectedAccountId,
+        },
+        metadata: paymentData.metadata || {},
+      });
+
+      return session;
+    } catch (error) {
+      throw new AppError(`Checkout session creation failed: ${error.message}`, 500, 'STRIPE_CHECKOUT_FAILED');
+    }
+  }
+
   // Construct webhook event for verification (used by payment controller)
   constructWebhookEvent(payload, signature, endpointSecret) {
     this._checkStripeEnabled();
