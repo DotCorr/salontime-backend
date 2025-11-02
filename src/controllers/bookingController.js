@@ -22,8 +22,8 @@ class BookingController {
     }
 
     try {
-      // Get service details
-      const { data: service, error: serviceError } = await supabase
+      // Get service details (use admin client to bypass RLS policies)
+      const { data: service, error: serviceError } = await supabaseAdmin
         .from('services')
         .select('*, salons(*)')
         .eq('id', service_id)
@@ -38,8 +38,8 @@ class BookingController {
       const endTime = new Date(startTime.getTime() + service.duration * 60000);
       const endTimeStr = endTime.toTimeString().split(' ')[0].slice(0, 5);
 
-      // Check for conflicts
-      const { data: conflicts } = await supabase
+      // Check for conflicts (use admin client to bypass RLS policies)
+      const { data: conflicts } = await supabaseAdmin
         .from('bookings')
         .select('id')
         .eq('salon_id', salon_id)
@@ -55,7 +55,7 @@ class BookingController {
       // Determine client ID (could be family member)
       let clientId = req.user.id;
       if (family_member_id) {
-        const { data: familyMember } = await supabase
+        const { data: familyMember } = await supabaseAdmin
           .from('family_members')
           .select('id')
           .eq('id', family_member_id)
@@ -67,8 +67,8 @@ class BookingController {
         }
       }
 
-      // Create booking
-      const { data: booking, error: bookingError } = await supabase
+      // Create booking (use admin client to bypass RLS policies)
+      const { data: booking, error: bookingError } = await supabaseAdmin
         .from('bookings')
         .insert([{
           client_id: clientId,
@@ -94,8 +94,8 @@ class BookingController {
         throw new AppError('Failed to create booking', 500, 'BOOKING_CREATION_FAILED');
       }
 
-      // Send confirmation email
-      const { data: client } = await supabase
+      // Send confirmation email (use admin client to bypass RLS policies)
+      const { data: client } = await supabaseAdmin
         .from('user_profiles')
         .select('*')
         .eq('id', clientId)
