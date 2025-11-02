@@ -22,8 +22,8 @@ class BookingController {
     }
 
     try {
-      // Get service details (use admin client to bypass RLS policies)
-      const { data: service, error: serviceError } = await supabaseAdmin
+      // Get service details
+      const { data: service, error: serviceError } = await supabase
         .from('services')
         .select('*, salons(*)')
         .eq('id', service_id)
@@ -38,8 +38,8 @@ class BookingController {
       const endTime = new Date(startTime.getTime() + service.duration * 60000);
       const endTimeStr = endTime.toTimeString().split(' ')[0].slice(0, 5);
 
-      // Check for conflicts (use admin client to bypass RLS policies)
-      const { data: conflicts } = await supabaseAdmin
+      // Check for conflicts
+      const { data: conflicts } = await supabase
         .from('bookings')
         .select('id')
         .eq('salon_id', salon_id)
@@ -55,7 +55,7 @@ class BookingController {
       // Determine client ID (could be family member)
       let clientId = req.user.id;
       if (family_member_id) {
-        const { data: familyMember } = await supabaseAdmin
+        const { data: familyMember } = await supabase
           .from('family_members')
           .select('id')
           .eq('id', family_member_id)
@@ -67,8 +67,8 @@ class BookingController {
         }
       }
 
-      // Create booking (use admin client to bypass RLS policies)
-      const { data: booking, error: bookingError } = await supabaseAdmin
+      // Create booking
+      const { data: booking, error: bookingError } = await supabase
         .from('bookings')
         .insert([{
           client_id: clientId,
@@ -94,8 +94,8 @@ class BookingController {
         throw new AppError('Failed to create booking', 500, 'BOOKING_CREATION_FAILED');
       }
 
-      // Send confirmation email (use admin client to bypass RLS policies)
-      const { data: client } = await supabaseAdmin
+      // Send confirmation email
+      const { data: client } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', clientId)
@@ -348,8 +348,8 @@ class BookingController {
     }
 
     try {
-      // Get service duration (use admin client to bypass RLS policies)
-      const { data: service, error: serviceError } = await supabaseAdmin
+      // Get service duration
+      const { data: service, error: serviceError } = await supabase
         .from('services')
         .select('duration')
         .eq('id', service_id)
@@ -359,8 +359,8 @@ class BookingController {
         throw new AppError('Service not found', 404, 'SERVICE_NOT_FOUND');
       }
 
-      // Get salon business hours (use admin client to bypass RLS policies)
-      const { data: salon, error: salonError } = await supabaseAdmin
+      // Get salon business hours
+      const { data: salon, error: salonError } = await supabase
         .from('salons')
         .select('business_hours')
         .eq('id', salon_id)
@@ -370,8 +370,8 @@ class BookingController {
         throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
       }
 
-      // Get existing bookings for the date (use admin client to bypass RLS policies)
-      let bookingsQuery = supabaseAdmin
+      // Get existing bookings for the date
+      let bookingsQuery = supabase
         .from('bookings')
         .select('start_time, end_time')
         .eq('salon_id', salon_id)
@@ -490,9 +490,9 @@ class BookingController {
     }
 
     try {
-      // Get service duration (use admin client to bypass RLS policies)
+      // Get service duration
       console.log(`📅 Looking up service: ${service_id} for salon: ${salon_id}`);
-      const { data: service, error: serviceError } = await supabaseAdmin
+      const { data: service, error: serviceError } = await supabase
         .from('services')
         .select('duration, id, name, salon_id')
         .eq('id', service_id)
@@ -516,8 +516,8 @@ class BookingController {
       
       console.log(`✅ Found service: ${service.name} (duration: ${service.duration} mins)`);
 
-      // Get salon business hours (use admin client to bypass RLS policies)
-      const { data: salon, error: salonError } = await supabaseAdmin
+      // Get salon business hours
+      const { data: salon, error: salonError } = await supabase
         .from('salons')
         .select('business_hours')
         .eq('id', salon_id)
@@ -527,8 +527,8 @@ class BookingController {
         throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
       }
 
-      // Get all bookings in date range (use admin client to bypass RLS policies)
-      let bookingsQuery = supabaseAdmin
+      // Get all bookings in date range
+      let bookingsQuery = supabase
         .from('bookings')
         .select('appointment_date, start_time, end_time')
         .eq('salon_id', salon_id)
