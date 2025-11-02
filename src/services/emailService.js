@@ -206,7 +206,7 @@ class EmailService {
               <p><strong>Date:</strong> ${booking.appointment_date}</p>
               <p><strong>Time:</strong> ${booking.start_time} - ${booking.end_time}</p>
               <p><strong>Service:</strong> ${booking.service_name}</p>
-              <p><strong>Total:</strong> €${booking.total_amount}</p>
+              ${booking.total_amount ? `<p><strong>Total:</strong> €${booking.total_amount}</p>` : ''}
               ${booking.client_notes ? `<p><strong>Notes:</strong> ${booking.client_notes}</p>` : ''}
             </div>
             

@@ -88,6 +88,16 @@ class BookingController {
       }
 
       // Create booking
+      console.log('📅 Creating booking:', {
+        client_id: clientId,
+        salon_id,
+        service_id,
+        staff_id,
+        appointment_date,
+        start_time,
+        end_time: endTimeStr,
+      });
+
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
         .insert([{
@@ -99,7 +109,6 @@ class BookingController {
           start_time,
           end_time: endTimeStr,
           client_notes,
-          total_amount: service.price,
           status: 'pending'
         }])
         .select(`
@@ -111,8 +120,12 @@ class BookingController {
         .single();
 
       if (bookingError) {
-        throw new AppError('Failed to create booking', 500, 'BOOKING_CREATION_FAILED');
+        console.error('❌ Booking creation error:', bookingError);
+        console.error('❌ Booking error details:', JSON.stringify(bookingError, null, 2));
+        throw new AppError(`Failed to create booking: ${bookingError.message}`, 500, 'BOOKING_CREATION_FAILED');
       }
+
+      console.log('✅ Booking created successfully:', booking?.id);
 
       // Send confirmation email
       const { data: client } = await supabase
@@ -122,7 +135,7 @@ class BookingController {
         .single();
 
       emailService.sendBookingConfirmation(
-        { ...booking, service_name: service.name },
+        { ...booking, service_name: service.name, total_amount: service.price },
         client,
         service.salons
       );
