@@ -491,15 +491,30 @@ class BookingController {
 
     try {
       // Get service duration
+      console.log(`📅 Looking up service: ${service_id} for salon: ${salon_id}`);
       const { data: service, error: serviceError } = await supabase
         .from('services')
-        .select('duration')
+        .select('duration, id, name, salon_id')
         .eq('id', service_id)
         .single();
 
-      if (serviceError || !service) {
+      if (serviceError) {
+        console.error(`❌ Service lookup error:`, serviceError);
+        throw new AppError(`Service not found: ${serviceError.message}`, 404, 'SERVICE_NOT_FOUND');
+      }
+      
+      if (!service) {
+        console.error(`❌ Service not found: ${service_id}`);
         throw new AppError('Service not found', 404, 'SERVICE_NOT_FOUND');
       }
+      
+      // Verify service belongs to the salon
+      if (service.salon_id !== salon_id) {
+        console.error(`❌ Service ${service_id} does not belong to salon ${salon_id}. Service belongs to: ${service.salon_id}`);
+        throw new AppError('Service does not belong to this salon', 404, 'SERVICE_NOT_FOUND');
+      }
+      
+      console.log(`✅ Found service: ${service.name} (duration: ${service.duration} mins)`);
 
       // Get salon business hours
       const { data: salon, error: salonError } = await supabase
