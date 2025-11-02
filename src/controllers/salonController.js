@@ -299,23 +299,150 @@ class SalonController {
     }
   });
 
-  // Search salons
+  // Search salons with comprehensive filtering
   searchSalons = asyncHandler(async (req, res) => {
-    const { location, service, page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
+    const { 
+      q, // search query
+      search, // alias for q
+      location,
+      city,
+      latitude,
+      lat,
+      longitude,
+      lng,
+      min_rating,
+      minRating,
+      max_distance,
+      maxDistance,
+      min_distance,
+      minDistance,
+      services,
+      service, // single service (backward compatibility)
+      sort, // sortBy: distance, rating, name, created_at
+      sortBy,
+      featured,
+      trending,
+      new_only,
+      newOnly,
+      popular_only,
+      popularOnly,
+      open_now,
+      openNow,
+      page = 1, 
+      limit = 50 
+    } = req.query;
+    
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const searchQuery = q || search;
+    const userLat = parseFloat(latitude || lat);
+    const userLng = parseFloat(longitude || lng);
+    const minRatingFilter = parseFloat(min_rating || minRating || 0);
+    const maxDistanceFilter = parseFloat(max_distance || maxDistance || 1000);
+    const minDistanceFilter = parseFloat(min_distance || minDistance || 0);
+    const sortByValue = sort || sortBy || 'distance';
+    
+    // Helper function to calculate distance
+    const calculateDistance = (lat1, lon1, lat2, lon2) => {
+      const R = 6371; // Earth's radius in km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    };
+    
+    // Helper function to check if salon is open now
+    const isOpenNow = (businessHours) => {
+      if (!businessHours) return false;
+      const now = new Date();
+      const dayOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][now.getDay()];
+      const dayHours = businessHours[dayOfWeek];
+      if (!dayHours || dayHours.closed === true || dayHours.closed === 'true') return false;
+      
+      const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      const openTime = dayHours.open || dayHours.opening;
+      const closeTime = dayHours.close || dayHours.closing;
+      
+      if (!openTime || !closeTime) return false;
+      return currentTime >= openTime && currentTime <= closeTime;
+    };
 
     try {
       let query = supabase
         .from('salons')
         .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
+        .eq('is_active', true);
 
-      // Add location filter if provided
-      if (location) {
-        query = query.ilike('address->city', `%${location}%`);
+      // Text search filter (name, description, city)
+      if (searchQuery) {
+        query = query.or(`business_name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%`);
       }
+
+      // Location/City filter
+      if (location || city) {
+        const locationValue = location || city;
+        query = query.ilike('city', `%${locationValue}%`);
+      }
+
+      // Rating filter
+      if (minRatingFilter > 0) {
+        query = query.gte('rating_average', minRatingFilter);
+      }
+
+      // Featured filter
+      if (featured === 'true' || featured === true) {
+        const now = new Date().toISOString();
+        query = query.eq('is_featured', true)
+          .or(`featured_until.is.null,featured_until.gte.${now}`);
+      }
+
+      // Trending filter (high trending_score)
+      if (trending === 'true' || trending === true) {
+        query = query.gt('trending_score', 0)
+          .order('trending_score', { ascending: false });
+      }
+
+      // New salons filter (created in last 30 days)
+      if (new_only === 'true' || newOnly === 'true' || new_only === true || newOnly === true) {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        query = query.gte('created_at', thirtyDaysAgo.toISOString());
+      }
+
+      // Popular filter (high rating + many reviews)
+      if (popular_only === 'true' || popularOnly === 'true' || popular_only === true || popularOnly === true) {
+        query = query.gte('rating_average', 4.5)
+          .gte('rating_count', 10);
+      }
+
+      // Apply sorting
+      switch (sortByValue.toLowerCase()) {
+        case 'rating':
+          query = query.order('rating_average', { ascending: false })
+            .order('rating_count', { ascending: false });
+          break;
+        case 'name':
+          query = query.order('business_name', { ascending: true });
+          break;
+        case 'created_at':
+        case 'newest':
+          query = query.order('created_at', { ascending: false });
+          break;
+        case 'distance':
+        default:
+          // Default: by distance if location provided, else by rating
+          if (userLat && userLng) {
+            query = query.order('rating_average', { ascending: false });
+          } else {
+            query = query.order('rating_average', { ascending: false })
+              .order('rating_count', { ascending: false });
+          }
+      }
+
+      // Get all matching salons (we'll filter by distance/other criteria after)
+      query = query.range(offset, offset + parseInt(limit) - 1);
 
       const { data: salons, error } = await query;
 
@@ -323,13 +450,55 @@ class SalonController {
         throw new AppError('Failed to search salons', 500, 'SALON_SEARCH_FAILED');
       }
 
-      // Add coordinates based on city
+      // Add coordinates based on city if missing
       const { geocodeSalons } = require('../utils/geocoding');
-      const salonsWithCoords = geocodeSalons(salons || []);
+      let salonsWithCoords = geocodeSalons(salons || []);
+
+      // Filter by distance if location provided
+      let filteredSalons = salonsWithCoords;
+      if (userLat && userLng) {
+        filteredSalons = salonsWithCoords.map(salon => {
+          if (salon.latitude && salon.longitude) {
+            const distance = calculateDistance(userLat, userLng, salon.latitude, salon.longitude);
+            return { ...salon, distance };
+          }
+          return salon;
+        }).filter(salon => {
+          // Filter by distance range
+          if (!salon.distance) return true; // Keep salons without coordinates
+          return salon.distance >= minDistanceFilter && salon.distance <= maxDistanceFilter;
+        });
+
+        // Re-sort by distance if location provided
+        if (sortByValue.toLowerCase() === 'distance') {
+          filteredSalons.sort((a, b) => (a.distance || 9999) - (b.distance || 9999));
+        }
+      }
+
+      // Filter by services if provided
+      if (services || service) {
+        const serviceList = services ? services.split(',') : [service];
+        filteredSalons = filteredSalons.filter(salon => {
+          // Get salon services - check services_offered field or fetch from services table
+          const salonServices = salon.services_offered || [];
+          return serviceList.some(svc => {
+            const serviceName = svc.toLowerCase();
+            return salonServices.some(s => 
+              (s.name || '').toLowerCase().includes(serviceName) ||
+              (s.category || '').toLowerCase().includes(serviceName)
+            );
+          });
+        });
+      }
+
+      // Filter by open_now if requested
+      if (open_now === 'true' || openNow === 'true' || open_now === true || openNow === true) {
+        filteredSalons = filteredSalons.filter(salon => isOpenNow(salon.business_hours));
+      }
 
       res.status(200).json({
         success: true,
-        data: salonsWithCoords
+        data: filteredSalons
       });
 
     } catch (error) {
