@@ -1,7 +1,7 @@
 const supabaseService = require('../services/supabaseService');
 const emailService = require('../services/emailService');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
-const { supabase, supabaseAdmin } = require('../config/database');
+const { supabase, supabaseAdmin, getAuthenticatedClient } = require('../config/database');
 
 class BookingController {
   // Create new booking
@@ -59,8 +59,11 @@ class BookingController {
       const endTime = new Date(startTime.getTime() + service.duration * 60000);
       const endTimeStr = endTime.toTimeString().split(' ')[0].slice(0, 5);
 
+      // Get authenticated Supabase client with user's token for RLS
+      const authenticatedSupabase = getAuthenticatedClient(req.token);
+
       // Check for conflicts
-      const { data: conflicts } = await supabase
+      const { data: conflicts } = await authenticatedSupabase
         .from('bookings')
         .select('id')
         .eq('salon_id', salon_id)
@@ -76,7 +79,7 @@ class BookingController {
       // Determine client ID (could be family member)
       let clientId = req.user.id;
       if (family_member_id) {
-        const { data: familyMember } = await supabase
+        const { data: familyMember } = await authenticatedSupabase
           .from('family_members')
           .select('id')
           .eq('id', family_member_id)
@@ -99,7 +102,7 @@ class BookingController {
         end_time: endTimeStr,
       });
 
-      const { data: booking, error: bookingError } = await supabase
+      const { data: booking, error: bookingError } = await authenticatedSupabase
         .from('bookings')
         .insert([{
           client_id: clientId,
@@ -143,7 +146,9 @@ class BookingController {
           paymentData.stripe_payment_intent_id = payment_intent_id;
         }
 
-        const { data: payment, error: paymentError } = await supabase
+        // Payment records don't need RLS auth context - use admin or base client
+        // Actually, payments might have RLS too, let's use authenticated client
+        const { data: payment, error: paymentError } = await authenticatedSupabase
           .from('payments')
           .insert([paymentData])
           .select()
@@ -163,7 +168,7 @@ class BookingController {
       // The webhook handler will catch payment_intent.succeeded and link it to the booking
 
       // Send confirmation email
-      const { data: client } = await supabase
+      const { data: client } = await authenticatedSupabase
         .from('user_profiles')
         .select('*')
         .eq('id', clientId)

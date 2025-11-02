@@ -12,7 +12,7 @@ if (missingVars.length > 0) {
   throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
 }
 
-// Create Supabase client
+// Create base Supabase client (without auth - will be set per request)
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY,
@@ -24,6 +24,31 @@ const supabase = createClient(
     }
   }
 );
+
+// Function to get authenticated Supabase client for a specific user token
+const getAuthenticatedClient = (accessToken) => {
+  if (!accessToken) {
+    return supabase; // Return base client if no token
+  }
+  
+  // Create a new client instance with the user's token
+  return createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY,
+    {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false
+      }
+    }
+  );
+};
 
 // Create admin client for server-side operations
 const supabaseAdmin = createClient(
@@ -60,6 +85,7 @@ testConnection();
 
 module.exports = {
   supabase,
-  supabaseAdmin
+  supabaseAdmin,
+  getAuthenticatedClient
 };
 
