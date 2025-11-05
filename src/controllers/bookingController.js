@@ -658,7 +658,7 @@ class BookingController {
       if (slots.length > 0) {
         console.log(`📅 First slot: ${slots[0].start_time}, Last slot: ${slots[slots.length - 1].start_time}`);
       } else {
-        console.log(`📅 No slots available - currentTime: ${currentTime}, endTime: ${endTime}, serviceDuration: ${service.duration}`);
+        console.log(`📅 No slots available for ${date} (${dayOfWeek}) with business hours ${openTime}-${closeTime}, service duration: ${service.duration} mins`);
       }
 
       res.status(200).json({
@@ -667,80 +667,93 @@ class BookingController {
       });
 
     } catch (error) {
+      console.error('❌ Error in getAvailableSlots:', error);
+      console.error('❌ Error stack:', error.stack);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to get available slots', 500, 'AVAILABLE_SLOTS_FETCH_FAILED');
+      throw new AppError(`Failed to get available slots: ${error.message}`, 500, 'AVAILABLE_SLOTS_FETCH_FAILED');
     }
   });
 
   // Helper method to calculate available slots
   _calculateAvailableSlots(openTime, closeTime, serviceDuration, existingBookings, appointmentDate = null) {
-    const slots = [];
-    const slotInterval = 15; // 15-minute intervals for more flexibility
+    try {
+      const slots = [];
+      const slotInterval = 15; // 15-minute intervals for more flexibility
 
-    const [openHour, openMinute] = openTime.split(':').map(Number);
-    const [closeHour, closeMinute] = closeTime.split(':').map(Number);
+      const [openHour, openMinute] = openTime.split(':').map(Number);
+      const [closeHour, closeMinute] = closeTime.split(':').map(Number);
 
-    let currentTime = openHour * 60 + openMinute; // Convert to minutes
-    const endTime = closeHour * 60 + closeMinute;
-
-    // Get current time if booking for today - allow booking at current time
-    if (appointmentDate) {
-      // Get today's date in YYYY-MM-DD format (using local timezone)
-      const now = new Date();
-      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      
-      // Normalize appointmentDate to YYYY-MM-DD format (handle both date strings and Date objects)
-      let appointmentDateStr = appointmentDate;
-      if (appointmentDate instanceof Date) {
-        appointmentDateStr = `${appointmentDate.getFullYear()}-${String(appointmentDate.getMonth() + 1).padStart(2, '0')}-${String(appointmentDate.getDate()).padStart(2, '0')}`;
-      } else if (typeof appointmentDate === 'string') {
-        // Ensure format is YYYY-MM-DD (remove time if present)
-        appointmentDateStr = appointmentDate.split('T')[0].split(' ')[0];
+      if (isNaN(openHour) || isNaN(openMinute) || isNaN(closeHour) || isNaN(closeMinute)) {
+        console.error(`❌ Invalid time format - openTime: ${openTime}, closeTime: ${closeTime}`);
+        return [];
       }
-      
-      if (appointmentDateStr === today) {
-        const currentMinutes = now.getHours() * 60 + now.getMinutes();
-        // Allow booking at current time or very soon (5 minute buffer for processing)
-        const minBookingTime = currentMinutes - 5;
-        console.log(`📅 Today booking - currentMinutes: ${currentMinutes} (${this._minutesToTimeString(currentMinutes)}), minBookingTime: ${minBookingTime} (${this._minutesToTimeString(minBookingTime)}), opening: ${this._minutesToTimeString(currentTime)}, closing: ${this._minutesToTimeString(endTime)}`);
-        // Start from minimum of (opening time, current time with buffer)
-        // But ensure we don't go past closing time
-        const oldCurrentTime = currentTime;
-        currentTime = Math.max(currentTime, minBookingTime);
-        console.log(`📅 Adjusted currentTime from ${this._minutesToTimeString(oldCurrentTime)} to ${this._minutesToTimeString(currentTime)}`);
-        // If minBookingTime is past closing time, no slots available
-        if (currentTime >= endTime) {
-          console.log(`📅 No slots available - currentTime (${this._minutesToTimeString(currentTime)}) >= endTime (${this._minutesToTimeString(endTime)})`);
-          return [];
+
+      let currentTime = openHour * 60 + openMinute; // Convert to minutes
+      const endTime = closeHour * 60 + closeMinute;
+
+      // Get current time if booking for today - allow booking at current time
+      if (appointmentDate) {
+        // Get today's date in YYYY-MM-DD format (using local timezone)
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        
+        // Normalize appointmentDate to YYYY-MM-DD format (handle both date strings and Date objects)
+        let appointmentDateStr = appointmentDate;
+        if (appointmentDate instanceof Date) {
+          appointmentDateStr = `${appointmentDate.getFullYear()}-${String(appointmentDate.getMonth() + 1).padStart(2, '0')}-${String(appointmentDate.getDate()).padStart(2, '0')}`;
+        } else if (typeof appointmentDate === 'string') {
+          // Ensure format is YYYY-MM-DD (remove time if present)
+          appointmentDateStr = appointmentDate.split('T')[0].split(' ')[0];
+        }
+        
+        if (appointmentDateStr === today) {
+          const currentMinutes = now.getHours() * 60 + now.getMinutes();
+          // Allow booking at current time or very soon (5 minute buffer for processing)
+          const minBookingTime = currentMinutes - 5;
+          console.log(`📅 Today booking - currentMinutes: ${currentMinutes} (${this._minutesToTimeString(currentMinutes)}), minBookingTime: ${minBookingTime} (${this._minutesToTimeString(minBookingTime)}), opening: ${this._minutesToTimeString(currentTime)}, closing: ${this._minutesToTimeString(endTime)}`);
+          // Start from minimum of (opening time, current time with buffer)
+          // But ensure we don't go past closing time
+          const oldCurrentTime = currentTime;
+          currentTime = Math.max(currentTime, minBookingTime);
+          console.log(`📅 Adjusted currentTime from ${this._minutesToTimeString(oldCurrentTime)} to ${this._minutesToTimeString(currentTime)}`);
+          // If minBookingTime is past closing time, no slots available
+          if (currentTime >= endTime) {
+            console.log(`📅 No slots available - currentTime (${this._minutesToTimeString(currentTime)}) >= endTime (${this._minutesToTimeString(endTime)})`);
+            return [];
+          }
         }
       }
-    }
 
-    while (currentTime + serviceDuration <= endTime) {
-      const timeStr = this._minutesToTimeString(currentTime);
-      const endTimeStr = this._minutesToTimeString(currentTime + serviceDuration);
+      while (currentTime + serviceDuration <= endTime) {
+        const timeStr = this._minutesToTimeString(currentTime);
+        const endTimeStr = this._minutesToTimeString(currentTime + serviceDuration);
 
-      // Check if slot conflicts with existing bookings
-      const hasConflict = existingBookings.some(booking => {
-        const bookingStart = this._timeStringToMinutes(booking.start_time);
-        const bookingEnd = this._timeStringToMinutes(booking.end_time);
+        // Check if slot conflicts with existing bookings
+        const hasConflict = existingBookings.some(booking => {
+          const bookingStart = this._timeStringToMinutes(booking.start_time);
+          const bookingEnd = this._timeStringToMinutes(booking.end_time);
 
-        return (currentTime < bookingEnd && currentTime + serviceDuration > bookingStart);
-      });
-
-      if (!hasConflict) {
-        slots.push({
-          start_time: timeStr,
-          end_time: endTimeStr
+          return (currentTime < bookingEnd && currentTime + serviceDuration > bookingStart);
         });
+
+        if (!hasConflict) {
+          slots.push({
+            start_time: timeStr,
+            end_time: endTimeStr
+          });
+        }
+
+        currentTime += slotInterval;
       }
 
-      currentTime += slotInterval;
+      return slots;
+    } catch (error) {
+      console.error('❌ Error in _calculateAvailableSlots:', error);
+      console.error('❌ Parameters - openTime:', openTime, 'closeTime:', closeTime, 'serviceDuration:', serviceDuration);
+      throw error;
     }
-
-    return slots;
   }
 
   _minutesToTimeString(minutes) {
