@@ -567,8 +567,11 @@ class BookingController {
     }
 
     try {
+      // Use authenticated client for RLS compliance
+      const authenticatedSupabase = getAuthenticatedClient(req.token);
+
       // Get service duration
-      const { data: service, error: serviceError } = await supabase
+      const { data: service, error: serviceError } = await authenticatedSupabase
         .from('services')
         .select('duration')
         .eq('id', service_id)
@@ -579,7 +582,7 @@ class BookingController {
       }
 
       // Get salon business hours
-      const { data: salon, error: salonError } = await supabase
+      const { data: salon, error: salonError } = await authenticatedSupabase
         .from('salons')
         .select('business_hours')
         .eq('id', salon_id)
@@ -589,19 +592,27 @@ class BookingController {
         throw new AppError('Salon not found', 404, 'SALON_NOT_FOUND');
       }
 
-      // Get existing bookings for the date
-      let bookingsQuery = supabase
+      // Get existing bookings for the date with timeout protection
+      let bookingsQuery = authenticatedSupabase
         .from('bookings')
         .select('start_time, end_time')
         .eq('salon_id', salon_id)
         .eq('appointment_date', date)
-        .neq('status', 'cancelled');
+        .neq('status', 'cancelled')
+        .limit(1000); // Limit to prevent timeout
 
       if (staff_id) {
         bookingsQuery = bookingsQuery.eq('staff_id', staff_id);
       }
 
-      const { data: existingBookings } = await bookingsQuery;
+      const { data: existingBookings, error: bookingsError } = await bookingsQuery;
+      
+      let bookings = existingBookings || [];
+      if (bookingsError) {
+        console.error('❌ Error fetching bookings for available slots:', bookingsError);
+        // Continue with empty bookings array if query fails
+        bookings = [];
+      }
 
       // Calculate available slots
       // Get day name (monday, tuesday, etc.) from date string
@@ -637,7 +648,7 @@ class BookingController {
         openTime,
         closeTime,
         service.duration,
-        existingBookings || [],
+        bookings,
         date // Pass date to allow current time booking for today
       );
 
