@@ -658,7 +658,13 @@ class BookingController {
       if (slots.length > 0) {
         console.log(`📅 First slot: ${slots[0].start_time}, Last slot: ${slots[slots.length - 1].start_time}`);
       } else {
+        const now = new Date();
+        const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         console.log(`📅 No slots available for ${date} (${dayOfWeek}) with business hours ${openTime}-${closeTime}, service duration: ${service.duration} mins`);
+        console.log(`📅 Current time: ${currentTimeStr}, Closing time: ${closeTime}`);
+        if (currentTimeStr > closeTime) {
+          console.log(`📅 ⚠️ It's past closing time - that's why no slots are available`);
+        }
       }
 
       res.status(200).json({
