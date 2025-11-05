@@ -708,11 +708,12 @@ class BookingController {
           appointmentDateStr = appointmentDate.split('T')[0].split(' ')[0];
         }
         
+        console.log(`📅 Checking if today - appointmentDateStr: "${appointmentDateStr}", today: "${today}"`);
         if (appointmentDateStr === today) {
           const currentMinutes = now.getHours() * 60 + now.getMinutes();
           // Allow booking at current time or very soon (5 minute buffer for processing)
           const minBookingTime = currentMinutes - 5;
-          console.log(`📅 Today booking - currentMinutes: ${currentMinutes} (${this._minutesToTimeString(currentMinutes)}), minBookingTime: ${minBookingTime} (${this._minutesToTimeString(minBookingTime)}), opening: ${this._minutesToTimeString(currentTime)}, closing: ${this._minutesToTimeString(endTime)}`);
+          console.log(`📅 TODAY BOOKING DETECTED - currentMinutes: ${currentMinutes} (${this._minutesToTimeString(currentMinutes)}), minBookingTime: ${minBookingTime} (${this._minutesToTimeString(minBookingTime)}), opening: ${this._minutesToTimeString(currentTime)}, closing: ${this._minutesToTimeString(endTime)}`);
           // Start from minimum of (opening time, current time with buffer)
           // But ensure we don't go past closing time
           const oldCurrentTime = currentTime;
@@ -720,9 +721,11 @@ class BookingController {
           console.log(`📅 Adjusted currentTime from ${this._minutesToTimeString(oldCurrentTime)} to ${this._minutesToTimeString(currentTime)}`);
           // If minBookingTime is past closing time, no slots available
           if (currentTime >= endTime) {
-            console.log(`📅 No slots available - currentTime (${this._minutesToTimeString(currentTime)}) >= endTime (${this._minutesToTimeString(endTime)})`);
+            console.log(`📅 No slots available - currentTime (${this._minutesToTimeString(currentTime)}) >= endTime (${this._minutesToTimeString(endTime)}) - IT'S PAST CLOSING TIME`);
             return [];
           }
+        } else {
+          console.log(`📅 Not today - will calculate all slots from opening to closing`);
         }
       }
 
