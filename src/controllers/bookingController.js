@@ -616,7 +616,9 @@ class BookingController {
 
       // Calculate available slots
       // Get day name (monday, tuesday, etc.) from date string
-      const dateObj = new Date(date);
+      // Parse date as local date (not UTC) to avoid timezone issues
+      const [year, month, day] = date.split('-').map(Number);
+      const dateObj = new Date(year, month - 1, day); // Month is 0-indexed in Date
       const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
       const dayOfWeek = days[dateObj.getDay()];
       const businessHours = salon.business_hours?.[dayOfWeek];
@@ -652,6 +654,8 @@ class BookingController {
         date // Pass date to allow current time booking for today
       );
 
+      console.log(`📅 Calculated ${slots.length} available slots for ${date} (${dayOfWeek}), service duration: ${service.duration} mins, business hours: ${openTime}-${closeTime}`);
+
       res.status(200).json({
         success: true,
         data: { available_slots: slots }
@@ -678,14 +682,30 @@ class BookingController {
 
     // Get current time if booking for today - allow booking at current time
     if (appointmentDate) {
-      const today = new Date().toISOString().split('T')[0];
-      if (appointmentDate === today) {
-        const now = new Date();
+      // Get today's date in YYYY-MM-DD format (using local timezone)
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      
+      // Normalize appointmentDate to YYYY-MM-DD format (handle both date strings and Date objects)
+      let appointmentDateStr = appointmentDate;
+      if (appointmentDate instanceof Date) {
+        appointmentDateStr = `${appointmentDate.getFullYear()}-${String(appointmentDate.getMonth() + 1).padStart(2, '0')}-${String(appointmentDate.getDate()).padStart(2, '0')}`;
+      } else if (typeof appointmentDate === 'string') {
+        // Ensure format is YYYY-MM-DD (remove time if present)
+        appointmentDateStr = appointmentDate.split('T')[0].split(' ')[0];
+      }
+      
+      if (appointmentDateStr === today) {
         const currentMinutes = now.getHours() * 60 + now.getMinutes();
         // Allow booking at current time or very soon (5 minute buffer for processing)
         const minBookingTime = currentMinutes - 5;
         // Start from minimum of (opening time, current time with buffer)
+        // But ensure we don't go past closing time
         currentTime = Math.max(currentTime, minBookingTime);
+        // If minBookingTime is past closing time, no slots available
+        if (currentTime >= endTime) {
+          return [];
+        }
       }
     }
 
