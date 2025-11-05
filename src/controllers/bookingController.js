@@ -62,15 +62,16 @@ class BookingController {
       // Get authenticated Supabase client with user's token for RLS
       const authenticatedSupabase = getAuthenticatedClient(req.token);
 
-      // Check for conflicts
+      // Check for conflicts - proper overlap detection
+      // Two time slots overlap if: start1 < end2 AND start2 < end1
       const { data: conflicts } = await authenticatedSupabase
         .from('bookings')
         .select('id')
         .eq('salon_id', salon_id)
         .eq('appointment_date', appointment_date)
         .neq('status', 'cancelled')
-        .or(`start_time.lte.${start_time},end_time.gte.${endTimeStr}`)
-        .or(`start_time.lt.${endTimeStr},end_time.gt.${start_time}`);
+        .lt('start_time', endTimeStr)
+        .gt('end_time', start_time);
 
       if (conflicts && conflicts.length > 0) {
         throw new AppError('Time slot not available', 409, 'TIME_SLOT_CONFLICT');
@@ -481,7 +482,7 @@ class BookingController {
       // Check permissions - owner, client, or staff at the salon
       const isOwner = booking.salons.owner_id === req.user.id;
       const isClient = booking.client_id === req.user.id;
-      
+
       // Check if user is staff at this salon
       let isStaff = false;
       if (!isOwner && !isClient) {
