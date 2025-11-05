@@ -655,6 +655,11 @@ class BookingController {
       );
 
       console.log(`📅 Calculated ${slots.length} available slots for ${date} (${dayOfWeek}), service duration: ${service.duration} mins, business hours: ${openTime}-${closeTime}`);
+      if (slots.length > 0) {
+        console.log(`📅 First slot: ${slots[0].start_time}, Last slot: ${slots[slots.length - 1].start_time}`);
+      } else {
+        console.log(`📅 No slots available - currentTime: ${currentTime}, endTime: ${endTime}, serviceDuration: ${service.duration}`);
+      }
 
       res.status(200).json({
         success: true,
@@ -699,11 +704,15 @@ class BookingController {
         const currentMinutes = now.getHours() * 60 + now.getMinutes();
         // Allow booking at current time or very soon (5 minute buffer for processing)
         const minBookingTime = currentMinutes - 5;
+        console.log(`📅 Today booking - currentMinutes: ${currentMinutes} (${this._minutesToTimeString(currentMinutes)}), minBookingTime: ${minBookingTime} (${this._minutesToTimeString(minBookingTime)}), opening: ${this._minutesToTimeString(currentTime)}, closing: ${this._minutesToTimeString(endTime)}`);
         // Start from minimum of (opening time, current time with buffer)
         // But ensure we don't go past closing time
+        const oldCurrentTime = currentTime;
         currentTime = Math.max(currentTime, minBookingTime);
+        console.log(`📅 Adjusted currentTime from ${this._minutesToTimeString(oldCurrentTime)} to ${this._minutesToTimeString(currentTime)}`);
         // If minBookingTime is past closing time, no slots available
         if (currentTime >= endTime) {
+          console.log(`📅 No slots available - currentTime (${this._minutesToTimeString(currentTime)}) >= endTime (${this._minutesToTimeString(endTime)})`);
           return [];
         }
       }
