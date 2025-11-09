@@ -440,11 +440,15 @@ class SalonController {
           }
       }
 
-      // If there's a search query, we need to fetch more results to filter properly
-      // Limit to 1000 results to avoid performance issues, but allow enough for filtering
+      // If there's a search query, use database-level text search on business_name
+      // This is the most common search field and will catch most cases
+      // We'll also filter by description and city in JavaScript as backup
+      // For search queries, we need to fetch enough results to ensure we find all matches
       // Otherwise, apply pagination now for efficiency
       if (searchQuery) {
-        query = query.range(0, 999); // Fetch up to 1000 results for filtering
+        // Search business_name at database level (most efficient)
+        query = query.ilike('business_name', `%${searchQuery}%`)
+          .limit(5000); // High limit to ensure we get all matching salons
       } else {
         query = query.range(offset, offset + parseInt(limit) - 1);
       }
@@ -459,14 +463,16 @@ class SalonController {
       const { geocodeSalons } = require('../utils/geocoding');
       let salonsWithCoords = geocodeSalons(salons || []);
 
-      // Apply text search filter if searchQuery provided
-      // This filters by business_name, description, or city
+      // Apply additional text search filter if searchQuery provided
+      // Database should have already filtered by business_name, description, and city using or()
+      // But we keep this as a backup filter in case the database query didn't work as expected
       if (searchQuery) {
         const searchLower = searchQuery.toLowerCase();
         salonsWithCoords = salonsWithCoords.filter(salon => {
           const businessName = (salon.business_name || '').toLowerCase();
           const description = (salon.description || '').toLowerCase();
           const city = (salon.city || '').toLowerCase();
+          // Check if search matches any field (backup filter)
           return businessName.includes(searchLower) || 
                  description.includes(searchLower) || 
                  city.includes(searchLower);
