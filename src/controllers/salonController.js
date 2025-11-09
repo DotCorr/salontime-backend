@@ -376,10 +376,8 @@ class SalonController {
         .eq('is_active', true);
 
       // Text search filter (name, description, city)
-      // Note: Service search will be handled after fetching salons
-      if (searchQuery) {
-        query = query.or(`business_name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%`);
-      }
+      // Note: We'll filter in JavaScript after fetching to avoid Supabase or() syntax issues
+      // Service search will be handled after fetching salons
 
       // Location/City filter
       if (location || city) {
@@ -442,8 +440,14 @@ class SalonController {
           }
       }
 
-      // Get all matching salons (we'll filter by distance/other criteria after)
-      query = query.range(offset, offset + parseInt(limit) - 1);
+      // If there's a search query, we need to fetch more results to filter properly
+      // Limit to 1000 results to avoid performance issues, but allow enough for filtering
+      // Otherwise, apply pagination now for efficiency
+      if (searchQuery) {
+        query = query.range(0, 999); // Fetch up to 1000 results for filtering
+      } else {
+        query = query.range(offset, offset + parseInt(limit) - 1);
+      }
 
       const { data: salons, error } = await query;
 
@@ -454,6 +458,20 @@ class SalonController {
       // Add coordinates based on city if missing
       const { geocodeSalons } = require('../utils/geocoding');
       let salonsWithCoords = geocodeSalons(salons || []);
+
+      // Apply text search filter if searchQuery provided
+      // This filters by business_name, description, or city
+      if (searchQuery) {
+        const searchLower = searchQuery.toLowerCase();
+        salonsWithCoords = salonsWithCoords.filter(salon => {
+          const businessName = (salon.business_name || '').toLowerCase();
+          const description = (salon.description || '').toLowerCase();
+          const city = (salon.city || '').toLowerCase();
+          return businessName.includes(searchLower) || 
+                 description.includes(searchLower) || 
+                 city.includes(searchLower);
+        });
+      }
 
       // Filter by distance if location provided
       let filteredSalons = salonsWithCoords;
@@ -566,9 +584,12 @@ class SalonController {
         filteredSalons = filteredSalons.filter(salon => isOpenNow(salon.business_hours));
       }
 
+      // Apply pagination after all filtering (especially important when search query is used)
+      const paginatedSalons = filteredSalons.slice(offset, offset + parseInt(limit));
+
       res.status(200).json({
         success: true,
-        data: filteredSalons
+        data: paginatedSalons
       });
 
     } catch (error) {

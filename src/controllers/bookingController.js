@@ -687,6 +687,8 @@ class BookingController {
     try {
       const slots = [];
       const slotInterval = 15; // 15-minute intervals for more flexibility
+      
+      // Define slotInterval before it's used in the today booking adjustment
 
       const [openHour, openMinute] = openTime.split(':').map(Number);
       const [closeHour, closeMinute] = closeTime.split(':').map(Number);
@@ -702,8 +704,13 @@ class BookingController {
       // Get current time if booking for today - allow booking at current time
       if (appointmentDate) {
         // Get today's date in YYYY-MM-DD format (using local timezone)
+        // Use UTC methods but interpret as local time for date comparison
         const now = new Date();
-        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        // Get local date components (UTC methods return local time when date is constructed locally)
+        const localYear = now.getFullYear();
+        const localMonth = now.getMonth() + 1;
+        const localDay = now.getDate();
+        const today = `${localYear}-${String(localMonth).padStart(2, '0')}-${String(localDay).padStart(2, '0')}`;
         
         // Normalize appointmentDate to YYYY-MM-DD format (handle both date strings and Date objects)
         let appointmentDateStr = appointmentDate;
@@ -716,15 +723,20 @@ class BookingController {
         
         console.log(`📅 Checking if today - appointmentDateStr: "${appointmentDateStr}", today: "${today}"`);
         if (appointmentDateStr === today) {
-          const currentMinutes = now.getHours() * 60 + now.getMinutes();
+          // Use local time for current time calculation
+          const localHours = now.getHours();
+          const localMinutes = now.getMinutes();
+          const currentMinutes = localHours * 60 + localMinutes;
           // Allow booking at current time or very soon (5 minute buffer for processing)
           const minBookingTime = currentMinutes - 5;
-          console.log(`📅 TODAY BOOKING DETECTED - currentMinutes: ${currentMinutes} (${this._minutesToTimeString(currentMinutes)}), minBookingTime: ${minBookingTime} (${this._minutesToTimeString(minBookingTime)}), opening: ${this._minutesToTimeString(currentTime)}, closing: ${this._minutesToTimeString(endTime)}`);
-          // Start from minimum of (opening time, current time with buffer)
+          console.log(`📅 TODAY BOOKING DETECTED - Local time: ${localHours}:${String(localMinutes).padStart(2, '0')} (${currentMinutes} min = ${this._minutesToTimeString(currentMinutes)}), minBookingTime: ${minBookingTime} (${this._minutesToTimeString(minBookingTime)}), opening: ${this._minutesToTimeString(currentTime)}, closing: ${this._minutesToTimeString(endTime)}`);
+          // Round minBookingTime up to next 15-minute interval to ensure we start from a valid slot time
+          const roundedMinBookingTime = Math.ceil(minBookingTime / slotInterval) * slotInterval;
+          // Start from minimum of (opening time, rounded current time with buffer)
           // But ensure we don't go past closing time
           const oldCurrentTime = currentTime;
-          currentTime = Math.max(currentTime, minBookingTime);
-          console.log(`📅 Adjusted currentTime from ${this._minutesToTimeString(oldCurrentTime)} to ${this._minutesToTimeString(currentTime)}`);
+          currentTime = Math.max(currentTime, roundedMinBookingTime);
+          console.log(`📅 Adjusted currentTime from ${this._minutesToTimeString(oldCurrentTime)} to ${this._minutesToTimeString(currentTime)} (rounded from ${this._minutesToTimeString(minBookingTime)})`);
           // If minBookingTime is past closing time, no slots available
           if (currentTime >= endTime) {
             console.log(`📅 No slots available - currentTime (${this._minutesToTimeString(currentTime)}) >= endTime (${this._minutesToTimeString(endTime)}) - IT'S PAST CLOSING TIME`);
