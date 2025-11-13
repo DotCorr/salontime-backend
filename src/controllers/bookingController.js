@@ -224,7 +224,13 @@ class BookingController {
       // Don't apply pagination yet - we need to filter by date first
       const { data: allBookings, error } = await query;
 
+      console.log(`📋 getMyBookings - Querying for user ID: ${req.user.id}`);
+      console.log(`📋 getMyBookings - User email: ${req.user.email}`);
       console.log(`📋 getMyBookings - Found ${allBookings?.length || 0} total bookings for user ${req.user.id}, upcoming=${upcoming}`);
+      
+      if (allBookings && allBookings.length > 0) {
+        console.log(`📋 Sample booking client_id: ${allBookings[0].client_id}`);
+      }
 
       if (error) {
         console.error('❌ Error fetching bookings:', error);
