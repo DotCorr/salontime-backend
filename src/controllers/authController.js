@@ -60,30 +60,39 @@ class AuthController {
         throw new AppError('Invalid access token', 401, 'INVALID_ACCESS_TOKEN');
       }
 
+      console.log('OAuth user from Supabase:', { id: user.id, email: user.email, metadata: user.user_metadata });
+
       // Check if user profile exists
       let userProfile;
       try {
         userProfile = await supabaseService.getUserProfile(user.id);
+        
+        console.log('Existing profile found:', userProfile);
         
         // Enforce role separation - user_type in request must match profile user_type
         if (userProfile.user_type !== user_type) {
           throw new AppError(`Access denied. You are registered as a ${userProfile.user_type}, not a ${user_type}.`, 403, 'ROLE_MISMATCH');
         }
       } catch (error) {
+        console.log('Profile not found, creating new one. Error:', error);
+        
         if (error.code === 'PROFILE_NOT_FOUND') {
-          // Create new user profile
+          // Create new user profile using upsert (handles duplicates)
           const profileData = {
             id: user.id,
             user_type: user_type,
-            first_name: user.user_metadata?.first_name || user.user_metadata?.name?.split(' ')[0] || '',
-            last_name: user.user_metadata?.last_name || user.user_metadata?.name?.split(' ').slice(1).join(' ') || '',
+            first_name: user.user_metadata?.first_name || user.user_metadata?.full_name?.split(' ')[0] || user.user_metadata?.name?.split(' ')[0] || '',
+            last_name: user.user_metadata?.last_name || user.user_metadata?.full_name?.split(' ').slice(1).join(' ') || user.user_metadata?.name?.split(' ').slice(1).join(' ') || '',
             email: user.email,
-            avatar_url: user.user_metadata?.avatar_url || null,
+            avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
             language: 'en' // Default language
           };
 
+          console.log('Creating profile with data:', profileData);
           userProfile = await supabaseService.createUserProfile(profileData);
+          console.log('Profile created successfully:', userProfile);
         } else {
+          console.error('Unexpected error fetching profile:', error);
           throw error;
         }
       }
@@ -111,6 +120,7 @@ class AuthController {
       });
 
     } catch (error) {
+      console.error('OAuth callback error:', error);
       if (error instanceof AppError) {
         throw error;
       }
