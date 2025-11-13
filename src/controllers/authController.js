@@ -69,9 +69,11 @@ class AuthController {
         
         console.log('Existing profile found:', userProfile);
         
-        // Enforce role separation - user_type in request must match profile user_type
+        // If user exists with different role, sign them in anyway (don't block)
+        // Just return their actual profile
         if (userProfile.user_type !== user_type) {
-          throw new AppError(`Access denied. You are registered as a ${userProfile.user_type}, not a ${user_type}.`, 403, 'ROLE_MISMATCH');
+          console.log(`⚠️  User tried to sign in as ${user_type} but is actually ${userProfile.user_type}. Signing them in with their actual role.`);
+          // Don't throw error - just use their existing profile
         }
       } catch (error) {
         console.log('Profile not found, creating new one. Error:', error);
