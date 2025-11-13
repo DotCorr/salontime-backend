@@ -85,7 +85,6 @@ class AuthController {
             user_type: user_type,
             first_name: user.user_metadata?.first_name || user.user_metadata?.full_name?.split(' ')[0] || user.user_metadata?.name?.split(' ')[0] || '',
             last_name: user.user_metadata?.last_name || user.user_metadata?.full_name?.split(' ').slice(1).join(' ') || user.user_metadata?.name?.split(' ').slice(1).join(' ') || '',
-            email: user.email,
             avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
             language: 'en' // Default language
           };
