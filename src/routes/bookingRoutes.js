@@ -19,6 +19,7 @@ router.patch('/:bookingId/reschedule', bookingController.rescheduleBooking);
 
 // Salon owner booking routes
 router.get('/salon', bookingController.getSalonBookings);
+router.patch('/:bookingId/cancel', bookingController.cancelBookingAsSalonOwner);
 
 module.exports = router;
 

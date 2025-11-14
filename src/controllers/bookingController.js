@@ -114,7 +114,7 @@ class BookingController {
           start_time,
           end_time: endTimeStr,
           client_notes,
-          status: 'pending'
+          status: 'confirmed' // Auto-approve bookings
         }])
         .select(`
           *,
@@ -461,7 +461,7 @@ class BookingController {
   // Update booking status
   updateBookingStatus = asyncHandler(async (req, res) => {
     const { bookingId } = req.params;
-    const { status, staff_notes } = req.body;
+    const { status, staff_notes, cancellation_reason } = req.body;
 
     const validStatuses = ['pending', 'confirmed', 'completed', 'cancelled', 'no_show'];
     if (!validStatuses.includes(status)) {
@@ -514,6 +514,11 @@ class BookingController {
       const updateData = { status };
       if (staff_notes && (isOwner || isStaff)) {
         updateData.salon_notes = staff_notes;
+      }
+      
+      // Store cancellation reason if provided (for both clients and salon owners)
+      if (status === 'cancelled' && cancellation_reason) {
+        updateData.cancellation_reason = cancellation_reason;
       }
 
       const { data: updatedBooking, error: updateError } = await supabase
@@ -1007,6 +1012,103 @@ class BookingController {
         throw error;
       }
       throw new AppError('Failed to fetch booking statistics', 500, 'BOOKING_STATS_FAILED');
+    }
+  });
+
+  // Salon owner cancel booking with reason
+  cancelBookingAsSalonOwner = asyncHandler(async (req, res) => {
+    const { bookingId } = req.params;
+    const { cancellation_reason } = req.body;
+
+    try {
+      // Fetch booking with salon info
+      const { data: booking, error: bookingError } = await supabase
+        .from('bookings')
+        .select(`
+          *,
+          salons(owner_id, name),
+          services(name, price),
+          user_profiles!client_id(email, first_name, last_name)
+        `)
+        .eq('id', bookingId)
+        .single();
+
+      if (bookingError || !booking) {
+        throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
+      }
+
+      // Verify user is the salon owner
+      if (booking.salons.owner_id !== req.user.id) {
+        throw new AppError('Only salon owners can cancel bookings', 403, 'INSUFFICIENT_PERMISSIONS');
+      }
+
+      // Check if booking is already cancelled
+      if (booking.status === 'cancelled') {
+        throw new AppError('Booking is already cancelled', 400, 'BOOKING_ALREADY_CANCELLED');
+      }
+
+      // Update booking status to cancelled with reason
+      const updateData = {
+        status: 'cancelled',
+        cancellation_reason: cancellation_reason || 'Cancelled by salon'
+      };
+
+      const { data: updatedBooking, error: updateError } = await supabase
+        .from('bookings')
+        .update(updateData)
+        .eq('id', bookingId)
+        .select(`
+          *,
+          services(name),
+          salons(name),
+          user_profiles!client_id(email, first_name, last_name)
+        `)
+        .single();
+
+      if (updateError) {
+        console.error('Error cancelling booking:', updateError);
+        throw new AppError('Failed to cancel booking', 500, 'BOOKING_CANCEL_FAILED');
+      }
+
+      // Send cancellation email to client
+      try {
+        await emailService.sendCancellationNotice(
+          { ...updatedBooking, service_name: booking.services.name },
+          booking.user_profiles,
+          booking.salons,
+          cancellation_reason || 'Booking cancelled by salon'
+        );
+      } catch (emailError) {
+        console.error('Failed to send cancellation email:', emailError);
+        // Don't fail the request if email fails
+      }
+
+      // Process waitlist for cancelled booking
+      try {
+        const waitlistController = require('./waitlistController');
+        await waitlistController.processWaitlistForCancelledBooking(
+          booking.salon_id,
+          booking.service_id,
+          booking.appointment_date,
+          booking.start_time
+        );
+      } catch (waitlistError) {
+        console.error('Failed to process waitlist:', waitlistError);
+        // Don't fail the request if waitlist processing fails
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Booking cancelled successfully',
+        data: updatedBooking
+      });
+
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      console.error('Cancel booking error:', error);
+      throw new AppError('Failed to cancel booking', 500, 'BOOKING_CANCEL_FAILED');
     }
   });
 }
