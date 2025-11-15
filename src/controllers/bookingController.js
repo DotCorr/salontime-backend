@@ -469,8 +469,11 @@ class BookingController {
     }
 
     try {
+      console.log('📋 Update booking status - bookingId:', bookingId, 'status:', status);
+      
       // Check if user owns the salon or is the client
-      const { data: booking, error: bookingError } = await supabase
+      // Use supabaseAdmin to bypass RLS and get booking details
+      const { data: booking, error: bookingError } = await supabaseAdmin
         .from('bookings')
         .select(`
           *,
@@ -480,6 +483,8 @@ class BookingController {
         `)
         .eq('id', bookingId)
         .single();
+
+      console.log('📋 Booking lookup result:', booking ? 'found' : 'not found', bookingError ? `error: ${bookingError.message}` : '');
 
       if (bookingError || !booking) {
         throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
@@ -492,7 +497,7 @@ class BookingController {
       // Check if user is staff at this salon
       let isStaff = false;
       if (!isOwner && !isClient) {
-        const { data: staffMember } = await supabase
+        const { data: staffMember } = await supabaseAdmin
           .from('staff')
           .select('id')
           .eq('salon_id', booking.salon_id)
@@ -500,6 +505,8 @@ class BookingController {
           .single();
         isStaff = !!staffMember;
       }
+
+      console.log('📋 Permissions check - isOwner:', isOwner, 'isClient:', isClient, 'isStaff:', isStaff);
 
       if (!isOwner && !isClient && !isStaff) {
         throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
@@ -521,7 +528,9 @@ class BookingController {
         updateData.cancellation_reason = cancellation_reason;
       }
 
-      const { data: updatedBooking, error: updateError } = await supabase
+      console.log('📋 Updating booking with data:', updateData);
+
+      const { data: updatedBooking, error: updateError } = await supabaseAdmin
         .from('bookings')
         .update(updateData)
         .eq('id', bookingId)
@@ -532,6 +541,8 @@ class BookingController {
           user_profiles!client_id(*)
         `)
         .single();
+
+      console.log('📋 Update result:', updatedBooking ? 'success' : 'failed', updateError ? `error: ${updateError.message}` : '');
 
       if (updateError) {
         throw new AppError('Failed to update booking', 500, 'BOOKING_UPDATE_FAILED');
