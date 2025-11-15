@@ -80,11 +80,13 @@ class AuthController {
         
         if (error.code === 'PROFILE_NOT_FOUND') {
           // Create new user profile using upsert (handles duplicates)
+          // Only set OAuth avatar for new accounts (no existing uploaded avatar)
           const profileData = {
             id: user.id,
             user_type: user_type,
             first_name: user.user_metadata?.first_name || user.user_metadata?.full_name?.split(' ')[0] || user.user_metadata?.name?.split(' ')[0] || '',
             last_name: user.user_metadata?.last_name || user.user_metadata?.full_name?.split(' ').slice(1).join(' ') || user.user_metadata?.name?.split(' ').slice(1).join(' ') || '',
+            // Use OAuth avatar only for new accounts
             avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
             language: 'en' // Default language
           };
@@ -95,6 +97,22 @@ class AuthController {
         } else {
           console.error('Unexpected error fetching profile:', error);
           throw error;
+        }
+      }
+      
+      // For existing users who sign in with OAuth, DON'T overwrite their avatar
+      // Only use OAuth avatar if they don't have one already
+      if (userProfile && !userProfile.avatar_url) {
+        const oauthAvatar = user.user_metadata?.avatar_url || user.user_metadata?.picture;
+        if (oauthAvatar) {
+          console.log('User has no avatar, updating with OAuth avatar:', oauthAvatar);
+          try {
+            await supabaseService.updateUserProfile(user.id, { avatar_url: oauthAvatar });
+            userProfile.avatar_url = oauthAvatar;
+          } catch (updateError) {
+            console.error('Failed to update avatar from OAuth:', updateError);
+            // Don't fail the login, just log it
+          }
         }
       }
 

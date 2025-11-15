@@ -77,7 +77,9 @@ class UserController {
       
       res.status(200).json({
         success: true,
-        data: userProfile
+        data: {
+          user: userProfile  // Wrap in 'user' key to match OAuth response format
+        }
       });
     } catch (error) {
       console.error('Error fetching user profile:', error);
