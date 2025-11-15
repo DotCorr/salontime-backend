@@ -7,7 +7,8 @@ class SupabaseService {
     console.log('🔍 SupabaseService.getUserProfile called with userId:', userId);
     console.log('🔍 User ID type:', typeof userId);
     
-    const { data, error } = await supabase
+    // Use supabaseAdmin to bypass RLS
+    const { data, error } = await supabaseAdmin
       .from('user_profiles')
       .select('*')
       .eq('id', userId)
@@ -61,7 +62,8 @@ class SupabaseService {
           };
           
           console.log('🔧 Creating profile with data:', profileData);
-          const { data: newProfile, error: createError } = await supabase
+          // Use supabaseAdmin to bypass RLS when creating profile
+          const { data: newProfile, error: createError } = await supabaseAdmin
             .from('user_profiles')
             .insert([profileData])
             .select()
