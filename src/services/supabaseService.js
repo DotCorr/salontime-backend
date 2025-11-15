@@ -42,8 +42,10 @@ class SupabaseService {
         
         // Try to get user info from auth to create profile
         try {
-          const { data: authUser, error: authError } = await supabase.auth.getUser();
+          // Use admin client to get user by ID (no token needed)
+          const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(userId);
           if (authError || !authUser.user) {
+            console.log('❌ Failed to get user from auth:', authError);
             throw new AppError('User not found in auth system', 404, 'USER_NOT_FOUND');
           }
           
@@ -53,7 +55,7 @@ class SupabaseService {
             first_name: authUser.user.user_metadata?.first_name || 'User',
             last_name: authUser.user.user_metadata?.last_name || '',
             email: authUser.user.email,
-            role: 'client', // Default role
+            user_type: 'client', // Default role (use user_type, not role)
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           };
