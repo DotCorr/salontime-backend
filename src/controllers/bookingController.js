@@ -369,8 +369,10 @@ class BookingController {
     }
 
     try {
-      // Get booking
-      const { data: booking, error: bookingError } = await supabase
+      console.log('📋 Reschedule booking - bookingId:', bookingId, 'newDate:', appointment_date, 'newTime:', start_time);
+      
+      // Get booking - use supabaseAdmin to bypass RLS
+      const { data: booking, error: bookingError } = await supabaseAdmin
         .from('bookings')
         .select(`
           *,
@@ -379,6 +381,8 @@ class BookingController {
         `)
         .eq('id', bookingId)
         .single();
+
+      console.log('📋 Booking lookup result:', booking ? 'found' : 'not found', bookingError ? `error: ${bookingError.message}` : '');
 
       if (bookingError || !booking) {
         throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
@@ -399,8 +403,10 @@ class BookingController {
       const endTime = new Date(startTime.getTime() + booking.services.duration * 60000);
       const endTimeStr = endTime.toTimeString().split(' ')[0].slice(0, 5);
 
-      // Check for conflicts at new time
-      const { data: conflicts } = await supabase
+      console.log('📋 Checking for conflicts - salon:', booking.salon_id, 'date:', appointment_date, 'time:', start_time, '-', endTimeStr);
+
+      // Check for conflicts at new time - use supabaseAdmin
+      const { data: conflicts } = await supabaseAdmin
         .from('bookings')
         .select('id')
         .eq('salon_id', booking.salon_id)
@@ -410,12 +416,16 @@ class BookingController {
         .or(`start_time.lte.${start_time},end_time.gte.${endTimeStr}`)
         .or(`start_time.lt.${endTimeStr},end_time.gt.${start_time}`);
 
+      console.log('📋 Conflicts found:', conflicts ? conflicts.length : 0);
+
       if (conflicts && conflicts.length > 0) {
         throw new AppError('Time slot not available', 409, 'TIME_SLOT_CONFLICT');
       }
 
-      // Update booking
-      const { data: updatedBooking, error: updateError } = await supabase
+      console.log('📋 Updating booking with new date/time');
+
+      // Update booking - use supabaseAdmin
+      const { data: updatedBooking, error: updateError } = await supabaseAdmin
         .from('bookings')
         .update({
           appointment_date,
@@ -431,6 +441,8 @@ class BookingController {
           user_profiles!client_id(*)
         `)
         .single();
+
+      console.log('📋 Update result:', updatedBooking ? 'success' : 'failed', updateError ? `error: ${updateError.message}` : '');
 
       if (updateError) {
         throw new AppError('Failed to reschedule booking', 500, 'RESCHEDULE_FAILED');
